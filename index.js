@@ -12,7 +12,8 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    EmbedBuilder
+    EmbedBuilder,
+    Events
 } = require('discord.js');
 
 
@@ -20,12 +21,12 @@ const {
 // 🌐 KEEP ALIVE
 // =====================
 const app = express();
-app.get("/", (req, res) => res.send("Bot is alive"));
+app.get("/", (_, res) => res.send("Bot online"));
 app.listen(process.env.PORT || 3000);
 
 
 // =====================
-// 🤖 CLIENT
+// 🤖 BOT
 // =====================
 const client = new Client({
     intents: [
@@ -39,7 +40,7 @@ const client = new Client({
 
 
 // =====================
-// 📌 CHANNELS
+// 📌 CONFIG
 // =====================
 const CHANNELS = {
     SCREEN: "1506712316425797704",
@@ -49,7 +50,7 @@ const CHANNELS = {
 
 const ROLE_TARGET = "1458410756453306490";
 
-const ALLOWED = [
+const ALLOWED_ROLES = [
     "1471553901433192532",
     "1458192704524648701",
     "1458192781217370173"
@@ -57,7 +58,7 @@ const ALLOWED = [
 
 
 // =====================
-// 💾 DATABASE
+// 💾 DB
 // =====================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -77,23 +78,35 @@ let salary = loadDB();
 
 
 // =====================
-// 🧠 ANTI DUPLICATE CACHE
+// 🧠 ANTI DUPLICATE (ВАЖНО)
 // =====================
-const processed = new Map();
+const processedMessages = new Map();
+
+function isProcessed(id) {
+    if (processedMessages.has(id)) return true;
+
+    processedMessages.set(id, Date.now());
+
+    setTimeout(() => {
+        processedMessages.delete(id);
+    }, 60000);
+
+    return false;
+}
 
 
 // =====================
 // READY
 // =====================
-client.once("ready", () => {
-    console.log(`ONLINE: ${client.user.tag}`);
+client.once(Events.ClientReady, () => {
+    console.log(`[BOT] ONLINE: ${client.user.tag}`);
 });
 
 
 // =====================
-// MESSAGE SYSTEM
+// MESSAGE HANDLER
 // =====================
-client.on("messageCreate", async (msg) => {
+client.on(Events.MessageCreate, async (msg) => {
 
     if (msg.author.bot) return;
 
@@ -103,47 +116,43 @@ client.on("messageCreate", async (msg) => {
     }
 
     // 📸 SCREEN SYSTEM
-    if (msg.channel.id === CHANNELS.SCREEN) {
+    if (msg.channel.id !== CHANNELS.SCREEN) return;
 
-        // 🔥 ANTI DUPLICATE FIX
-        if (processed.has(msg.id)) return;
-        processed.set(msg.id, true);
-        setTimeout(() => processed.delete(msg.id), 60000);
+    if (isProcessed(msg.id)) return;
 
-        const att = msg.attachments?.first();
-        if (!att?.url) return;
+    const att = msg.attachments?.first();
+    if (!att?.url) return;
 
-        try {
-            const audit = await client.channels.fetch(CHANNELS.AUDIT);
+    try {
+        const audit = await client.channels.fetch(CHANNELS.AUDIT);
 
-            const embed = new EmbedBuilder()
-                .setTitle("Скриншот")
-                .setDescription(`От: ${msg.author.tag || "Unknown user"}`)
-                .setImage(att.url)
-                .setColor("Blue");
+        const embed = new EmbedBuilder()
+            .setTitle("📸 Скриншот")
+            .setDescription(`От: ${msg.author.tag}`)
+            .setImage(att.url)
+            .setColor("Blue");
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`accept_${msg.author.id}`)
-                    .setLabel("Принять")
-                    .setStyle(ButtonStyle.Success),
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`accept_${msg.author.id}`)
+                .setLabel("Принять")
+                .setStyle(ButtonStyle.Success),
 
-                new ButtonBuilder()
-                    .setCustomId(`reject_${msg.author.id}`)
-                    .setLabel("Отклонить")
-                    .setStyle(ButtonStyle.Danger)
-            );
+            new ButtonBuilder()
+                .setCustomId(`reject_${msg.author.id}`)
+                .setLabel("Отклонить")
+                .setStyle(ButtonStyle.Danger)
+        );
 
-            await audit.send({
-                embeds: [embed],
-                components: [row]
-            });
+        await audit.send({
+            embeds: [embed],
+            components: [row]
+        });
 
-            setTimeout(() => msg.delete().catch(() => {}), 2000);
+        setTimeout(() => msg.delete().catch(() => {}), 1500);
 
-        } catch (e) {
-            console.log("Screen error:", e);
-        }
+    } catch (e) {
+        console.log("[SCREEN ERROR]", e.message);
     }
 });
 
@@ -151,16 +160,16 @@ client.on("messageCreate", async (msg) => {
 // =====================
 // INTERACTIONS (/all + buttons)
 // =====================
-client.on("interactionCreate", async (i) => {
+client.on(Events.InteractionCreate, async (i) => {
 
     // =====================
     // /all
     // =====================
     if (i.isChatInputCommand() && i.commandName === "all") {
 
-        const has = i.member.roles.cache.some(r => ALLOWED.includes(r.id));
-        if (!has) {
-            return i.reply({ content: "Нет прав", ephemeral: true });
+        const allowed = i.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id));
+        if (!allowed) {
+            return i.reply({ content: "❌ Нет прав", ephemeral: true });
         }
 
         const text = i.options.getString("text");
@@ -174,7 +183,7 @@ client.on("interactionCreate", async (i) => {
         );
 
         const embed = new EmbedBuilder()
-            .setTitle("Объявление")
+            .setTitle("📢 Объявление")
             .setDescription(text)
             .setColor("Red");
 
@@ -186,10 +195,10 @@ client.on("interactionCreate", async (i) => {
 
         async function worker() {
             while (index < users.length) {
-                const m = users[index++];
+                const user = users[index++];
 
                 try {
-                    await m.send({ embeds: [embed] });
+                    await user.send({ embeds: [embed] });
                     sent++;
                 } catch {
                     fail++;
@@ -201,17 +210,16 @@ client.on("interactionCreate", async (i) => {
 
         const tasks = Array.from({ length: CONCURRENCY }, worker);
 
-        const progress = setInterval(() => {
+        const interval = setInterval(() => {
             i.editReply(`📨 ${sent + fail}/${users.length} | OK ${sent} | FAIL ${fail}`)
                 .catch(() => {});
         }, 3000);
 
         await Promise.all(tasks);
 
-        clearInterval(progress);
+        clearInterval(interval);
 
-        i.editReply(`ГОТОВО\nВсего: ${users.length}\nOK: ${sent}\nFAIL: ${fail}`)
-            .catch(() => {});
+        return i.editReply(`✅ ГОТОВО\nВсего: ${users.length}\nOK: ${sent}\nFAIL: ${fail}`);
     }
 
 
@@ -238,7 +246,7 @@ client.on("interactionCreate", async (i) => {
 
     if (action === "reject") {
         await i.update({
-            content: "Отклонено",
+            content: "❌ Отклонено",
             components: []
         });
     }
