@@ -15,18 +15,17 @@ const {
     EmbedBuilder
 } = require('discord.js');
 
+
+// =====================
+// 🌐 KEEP ALIVE
+// =====================
 const app = express();
-
-// =====================
-// 🌐 KEEP ALIVE (Render)
-// =====================
 app.get("/", (req, res) => res.send("Bot is alive"));
-
 app.listen(process.env.PORT || 3000);
 
 
 // =====================
-// 🤖 BOT
+// 🤖 CLIENT
 // =====================
 const client = new Client({
     intents: [
@@ -58,7 +57,7 @@ const ALLOWED = [
 
 
 // =====================
-// 💾 DB
+// 💾 DATABASE
 // =====================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -78,19 +77,21 @@ let salary = loadDB();
 
 
 // =====================
-// 🧠 CACHE
+// 🧠 ANTI DUPLICATE CACHE
 // =====================
-const processed = new Set();
+const processed = new Map();
 
 
 // =====================
 // READY
 // =====================
-client.once("ready", () => {});
+client.once("ready", () => {
+    console.log(`ONLINE: ${client.user.tag}`);
+});
 
 
 // =====================
-// MESSAGES
+// MESSAGE SYSTEM
 // =====================
 client.on("messageCreate", async (msg) => {
 
@@ -101,21 +102,23 @@ client.on("messageCreate", async (msg) => {
         return msg.reply(`Баланс: ${salary[msg.author.id] || 0}`);
     }
 
-    // 📥 SCREENSHOT SYSTEM (FIXED)
+    // 📸 SCREEN SYSTEM
     if (msg.channel.id === CHANNELS.SCREEN) {
 
+        // 🔥 ANTI DUPLICATE FIX
         if (processed.has(msg.id)) return;
-        processed.add(msg.id);
+        processed.set(msg.id, true);
+        setTimeout(() => processed.delete(msg.id), 60000);
 
-        const att = msg.attachments.first();
-        if (!att) return;
+        const att = msg.attachments?.first();
+        if (!att?.url) return;
 
         try {
             const audit = await client.channels.fetch(CHANNELS.AUDIT);
 
             const embed = new EmbedBuilder()
                 .setTitle("Скриншот")
-                .setDescription(`От: <@${msg.author.id}>`)
+                .setDescription(`От: ${msg.author.tag || "Unknown user"}`)
                 .setImage(att.url)
                 .setColor("Blue");
 
@@ -136,15 +139,17 @@ client.on("messageCreate", async (msg) => {
                 components: [row]
             });
 
-            setTimeout(() => msg.delete().catch(() => {}), 3000);
+            setTimeout(() => msg.delete().catch(() => {}), 2000);
 
-        } catch {}
+        } catch (e) {
+            console.log("Screen error:", e);
+        }
     }
 });
 
 
 // =====================
-// INTERACTIONS
+// INTERACTIONS (/all + buttons)
 // =====================
 client.on("interactionCreate", async (i) => {
 
@@ -199,7 +204,7 @@ client.on("interactionCreate", async (i) => {
         const progress = setInterval(() => {
             i.editReply(`📨 ${sent + fail}/${users.length} | OK ${sent} | FAIL ${fail}`)
                 .catch(() => {});
-        }, 4000);
+        }, 3000);
 
         await Promise.all(tasks);
 
