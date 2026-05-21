@@ -18,7 +18,7 @@ const {
 
 
 // =====================
-// 🌐 KEEP ALIVE
+// 🌐 KEEP ALIVE (Render)
 // =====================
 const app = express();
 app.get("/", (_, res) => res.send("Bot is alive"));
@@ -26,7 +26,7 @@ app.listen(process.env.PORT || 3000);
 
 
 // =====================
-// 🤖 CLIENT
+// 🤖 BOT
 // =====================
 const client = new Client({
     intents: [
@@ -40,13 +40,12 @@ const client = new Client({
 
 
 // =====================
-// 📌 CHANNELS (NEW SERVER)
+// 📌 CHANNELS (ТВОИ НОВЫЕ)
 // =====================
 const CHANNELS = {
-    SCREEN: "1506712316425797704",
-    AUDIT: "1500501911848095906",
-    SALARY: "1500515048970522685",
-    REPORT: "1499706104345792512"
+    SCREEN: "1499706104345792512", // 📸 скрины
+    AUDIT: "1500501911848095906",  // 🛡 аудит
+    SALARY: "1500515048970522685"  // 💰 зарплата
 };
 
 const ROLE_TARGET = "1458410756453306490";
@@ -79,13 +78,14 @@ let salary = loadDB();
 
 
 // =====================
-// 🧠 ANTI DUPLICATE
+// 🧠 ANTI DUPLICATE SYSTEM
 // =====================
 const processed = new Map();
 
 function lock(id) {
     if (processed.has(id)) return true;
     processed.set(id, Date.now());
+
     setTimeout(() => processed.delete(id), 60000);
     return false;
 }
@@ -96,15 +96,23 @@ function lock(id) {
 // =====================
 client.once(Events.ClientReady, () => {
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
+    console.log("📸 SCREEN CHANNEL:", CHANNELS.SCREEN);
 });
 
 
 // =====================
-// MESSAGE SYSTEM (SCREEN)
+// MESSAGE CREATE (SCREENS)
 // =====================
 client.on(Events.MessageCreate, async (msg) => {
 
     if (msg.author.bot) return;
+
+    // 💰 BALANCE
+    if (msg.content === "/balance") {
+        return msg.reply(`Баланс: ${salary[msg.author.id] || 0}`);
+    }
+
+    // 📸 SCREEN SYSTEM
     if (msg.channel.id !== CHANNELS.SCREEN) return;
 
     if (lock(msg.id)) return;
@@ -117,10 +125,9 @@ client.on(Events.MessageCreate, async (msg) => {
 
         const embed = new EmbedBuilder()
             .setTitle("📸 Новый скриншот")
-            .setDescription(`👤 Отправил: <@${msg.author.id}>`)
+            .setDescription(`👤 От: <@${msg.author.id}>`)
             .setImage(att.url)
             .setColor("Blue")
-            .setFooter({ text: "Audit System" })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
@@ -135,7 +142,10 @@ client.on(Events.MessageCreate, async (msg) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
-        await audit.send({ embeds: [embed], components: [row] });
+        await audit.send({
+            embeds: [embed],
+            components: [row]
+        });
 
         setTimeout(() => msg.delete().catch(() => {}), 1500);
 
@@ -146,7 +156,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
 // =====================
-// INTERACTIONS (/all + buttons)
+// INTERACTIONS
 // =====================
 client.on(Events.InteractionCreate, async (i) => {
 
@@ -155,8 +165,10 @@ client.on(Events.InteractionCreate, async (i) => {
     // =====================
     if (i.isChatInputCommand() && i.commandName === "all") {
 
-        const ok = i.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id));
-        if (!ok) return i.reply({ content: "❌ Нет прав", ephemeral: true });
+        const allowed = i.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id));
+        if (!allowed) {
+            return i.reply({ content: "❌ Нет прав", ephemeral: true });
+        }
 
         const text = i.options.getString("text");
 
@@ -176,13 +188,13 @@ client.on(Events.InteractionCreate, async (i) => {
 
         let sent = 0;
         let fail = 0;
-        let i2 = 0;
+        let index = 0;
 
         const CONCURRENCY = 5;
 
         async function worker() {
-            while (i2 < users.length) {
-                const u = users[i2++];
+            while (index < users.length) {
+                const u = users[index++];
 
                 try {
                     await u.send({ embeds: [embed] });
@@ -198,26 +210,26 @@ client.on(Events.InteractionCreate, async (i) => {
         const tasks = Array.from({ length: CONCURRENCY }, worker);
 
         const progress = setInterval(() => {
-            i.editReply(`📨 ${sent + fail}/${users.length} | ✅ ${sent} | ❌ ${fail}`)
+            i.editReply(`📨 ${sent + fail}/${users.length} | OK ${sent} | FAIL ${fail}`)
                 .catch(() => {});
         }, 3000);
 
         await Promise.all(tasks);
+
         clearInterval(progress);
 
-        return i.editReply(`✅ ГОТОВО\nВсего: ${users.length}\nОтправлено: ${sent}\nОшибки: ${fail}`);
+        return i.editReply(`✅ ГОТОВО\nВсего: ${users.length}\nOK: ${sent}\nFAIL: ${fail}`);
     }
 
 
     // =====================
-    // BUTTONS (SALARY + REPORT UI)
+    // BUTTONS (ACCEPT / REJECT)
     // =====================
     if (!i.isButton()) return;
 
     const [action, id] = i.customId.split("_");
 
     const salaryChannel = await client.channels.fetch(CHANNELS.SALARY);
-    const reportChannel = await client.channels.fetch(CHANNELS.REPORT);
 
     if (action === "accept") {
 
@@ -226,30 +238,20 @@ client.on(Events.InteractionCreate, async (i) => {
 
         const embed = new EmbedBuilder()
             .setTitle("💰 Зарплата выдана")
-            .setDescription(`👤 Пользователь: <@${id}>\n💵 Сумма: +10000\n📊 Баланс: ${salary[id]}`)
+            .setDescription(`👤 <@${id}>`)
+            .addFields(
+                { name: "Сумма", value: "+10000", inline: true },
+                { name: "Баланс", value: `${salary[id]}`, inline: true }
+            )
             .setColor("Green")
             .setTimestamp();
 
         await i.update({
-            content: `💰 +10000 начислено <@${id}>`,
+            content: `💰 +10000 выдано <@${id}>`,
             components: []
         });
 
         salaryChannel.send({ embeds: [embed] });
-
-        reportChannel.send({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle("📊 Отчёт системы")
-                    .setDescription(`Выдана зарплата пользователю <@${id}>`)
-                    .addFields(
-                        { name: "Сумма", value: "+10000", inline: true },
-                        { name: "Баланс", value: `${salary[id]}`, inline: true }
-                    )
-                    .setColor("Gold")
-                    .setTimestamp()
-            ]
-        });
     }
 
     if (action === "reject") {
