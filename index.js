@@ -21,12 +21,12 @@ const {
 // 🌐 KEEP ALIVE
 // =====================
 const app = express();
-app.get("/", (_, res) => res.send("Bot online"));
+app.get("/", (_, res) => res.send("Bot is alive"));
 app.listen(process.env.PORT || 3000);
 
 
 // =====================
-// 🤖 BOT
+// 🤖 CLIENT
 // =====================
 const client = new Client({
     intents: [
@@ -40,12 +40,13 @@ const client = new Client({
 
 
 // =====================
-// 📌 CONFIG
+// 📌 CHANNELS (NEW SERVER)
 // =====================
 const CHANNELS = {
     SCREEN: "1506712316425797704",
-    AUDIT: "1506712342610837646",
-    SALARY: "1506712365243306094"
+    AUDIT: "1500501911848095906",
+    SALARY: "1500515048970522685",
+    REPORT: "1499706104345792512"
 };
 
 const ROLE_TARGET = "1458410756453306490";
@@ -58,7 +59,7 @@ const ALLOWED_ROLES = [
 
 
 // =====================
-// 💾 DB
+// 💾 DATABASE
 // =====================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -78,19 +79,14 @@ let salary = loadDB();
 
 
 // =====================
-// 🧠 ANTI DUPLICATE (ВАЖНО)
+// 🧠 ANTI DUPLICATE
 // =====================
-const processedMessages = new Map();
+const processed = new Map();
 
-function isProcessed(id) {
-    if (processedMessages.has(id)) return true;
-
-    processedMessages.set(id, Date.now());
-
-    setTimeout(() => {
-        processedMessages.delete(id);
-    }, 60000);
-
+function lock(id) {
+    if (processed.has(id)) return true;
+    processed.set(id, Date.now());
+    setTimeout(() => processed.delete(id), 60000);
     return false;
 }
 
@@ -104,21 +100,14 @@ client.once(Events.ClientReady, () => {
 
 
 // =====================
-// MESSAGE HANDLER
+// MESSAGE SYSTEM (SCREEN)
 // =====================
 client.on(Events.MessageCreate, async (msg) => {
 
     if (msg.author.bot) return;
-
-    // 💰 BALANCE
-    if (msg.content === "/balance") {
-        return msg.reply(`Баланс: ${salary[msg.author.id] || 0}`);
-    }
-
-    // 📸 SCREEN SYSTEM
     if (msg.channel.id !== CHANNELS.SCREEN) return;
 
-    if (isProcessed(msg.id)) return;
+    if (lock(msg.id)) return;
 
     const att = msg.attachments?.first();
     if (!att?.url) return;
@@ -127,10 +116,12 @@ client.on(Events.MessageCreate, async (msg) => {
         const audit = await client.channels.fetch(CHANNELS.AUDIT);
 
         const embed = new EmbedBuilder()
-            .setTitle("📸 Скриншот")
-            .setDescription(`От: ${msg.author.tag}`)
+            .setTitle("📸 Новый скриншот")
+            .setDescription(`👤 Отправил: <@${msg.author.id}>`)
             .setImage(att.url)
-            .setColor("Blue");
+            .setColor("Blue")
+            .setFooter({ text: "Audit System" })
+            .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -144,15 +135,12 @@ client.on(Events.MessageCreate, async (msg) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
-        await audit.send({
-            embeds: [embed],
-            components: [row]
-        });
+        await audit.send({ embeds: [embed], components: [row] });
 
         setTimeout(() => msg.delete().catch(() => {}), 1500);
 
     } catch (e) {
-        console.log("[SCREEN ERROR]", e.message);
+        console.log("SCREEN ERROR:", e.message);
     }
 });
 
@@ -167,10 +155,8 @@ client.on(Events.InteractionCreate, async (i) => {
     // =====================
     if (i.isChatInputCommand() && i.commandName === "all") {
 
-        const allowed = i.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id));
-        if (!allowed) {
-            return i.reply({ content: "❌ Нет прав", ephemeral: true });
-        }
+        const ok = i.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id));
+        if (!ok) return i.reply({ content: "❌ Нет прав", ephemeral: true });
 
         const text = i.options.getString("text");
 
@@ -185,63 +171,85 @@ client.on(Events.InteractionCreate, async (i) => {
         const embed = new EmbedBuilder()
             .setTitle("📢 Объявление")
             .setDescription(text)
-            .setColor("Red");
+            .setColor("Red")
+            .setTimestamp();
 
         let sent = 0;
         let fail = 0;
-        let index = 0;
+        let i2 = 0;
 
         const CONCURRENCY = 5;
 
         async function worker() {
-            while (index < users.length) {
-                const user = users[index++];
+            while (i2 < users.length) {
+                const u = users[i2++];
 
                 try {
-                    await user.send({ embeds: [embed] });
+                    await u.send({ embeds: [embed] });
                     sent++;
                 } catch {
                     fail++;
                 }
 
-                await new Promise(r => setTimeout(r, 700));
+                await new Promise(r => setTimeout(r, 600));
             }
         }
 
         const tasks = Array.from({ length: CONCURRENCY }, worker);
 
-        const interval = setInterval(() => {
-            i.editReply(`📨 ${sent + fail}/${users.length} | OK ${sent} | FAIL ${fail}`)
+        const progress = setInterval(() => {
+            i.editReply(`📨 ${sent + fail}/${users.length} | ✅ ${sent} | ❌ ${fail}`)
                 .catch(() => {});
         }, 3000);
 
         await Promise.all(tasks);
+        clearInterval(progress);
 
-        clearInterval(interval);
-
-        return i.editReply(`✅ ГОТОВО\nВсего: ${users.length}\nOK: ${sent}\nFAIL: ${fail}`);
+        return i.editReply(`✅ ГОТОВО\nВсего: ${users.length}\nОтправлено: ${sent}\nОшибки: ${fail}`);
     }
 
 
     // =====================
-    // BUTTONS
+    // BUTTONS (SALARY + REPORT UI)
     // =====================
     if (!i.isButton()) return;
 
     const [action, id] = i.customId.split("_");
 
-    const audit = await client.channels.fetch(CHANNELS.SALARY);
+    const salaryChannel = await client.channels.fetch(CHANNELS.SALARY);
+    const reportChannel = await client.channels.fetch(CHANNELS.REPORT);
 
     if (action === "accept") {
+
         salary[id] = (salary[id] || 0) + 10000;
         saveDB(salary);
 
+        const embed = new EmbedBuilder()
+            .setTitle("💰 Зарплата выдана")
+            .setDescription(`👤 Пользователь: <@${id}>\n💵 Сумма: +10000\n📊 Баланс: ${salary[id]}`)
+            .setColor("Green")
+            .setTimestamp();
+
         await i.update({
-            content: `+10000 | Баланс: ${salary[id]}`,
+            content: `💰 +10000 начислено <@${id}>`,
             components: []
         });
 
-        audit.send(`+10000 <@${id}>`);
+        salaryChannel.send({ embeds: [embed] });
+
+        reportChannel.send({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle("📊 Отчёт системы")
+                    .setDescription(`Выдана зарплата пользователю <@${id}>`)
+                    .addFields(
+                        { name: "Сумма", value: "+10000", inline: true },
+                        { name: "Баланс", value: `${salary[id]}`, inline: true }
+                    )
+                    .setColor("Gold")
+                    .setTimestamp()
+            ]
+        });
     }
 
     if (action === "reject") {
