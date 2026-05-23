@@ -55,6 +55,11 @@ const client = new Client({
     ]
 });
 
+// Глобальный перехватчик ошибок API, чтобы бот никогда не падал от лагов сети
+client.on(Events.Error, (error) => {
+    console.error("[GLOBAL DISCORD ERROR]", error);
+});
+
 
 // =====================================================
 // CONFIG
@@ -226,7 +231,8 @@ client.on(Events.InteractionCreate, async (i) => {
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             if (i.commandName === "balance") {
-                return i.reply({ content: `💰 Баланс: ${salary[i.user.id] || 0}`, ephemeral: true });
+                await i.reply({ content: `💰 Баланс: ${salary[i.user.id] || 0}`, ephemeral: true });
+                return;
             }
 
             if (i.commandName === "panel") {
@@ -254,7 +260,7 @@ client.on(Events.InteractionCreate, async (i) => {
 • Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
 • Мы не принимаем детей, фриков и неадекватных людей.
 • Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
-• У нас нет отдельных мест только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
+• У нас нет отдельных местах только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
 • Если заявка была отклонена — это окончательное решение.
 • КД на повторную подачу заявки — **2 дня**.
 
@@ -273,7 +279,8 @@ client.on(Events.InteractionCreate, async (i) => {
                 );
 
                 await channel.send({ embeds: [embed], components: [menu] });
-                return i.reply({ content: "✅ Панель отправлена", ephemeral: true });
+                await i.reply({ content: "✅ Панель отправлена", ephemeral: true });
+                return;
             }
         }
 
@@ -291,7 +298,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 { id: "q4", label: "ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?", placeholder: "Увидел на респе / медиа контент...", style: TextInputStyle.Paragraph }
             ];
 
-            // ИЗМЕНЕНИЕ: Строка с откатом добавляется ТОЛЬКО если это НЕ academy (то есть для capture)
             if (type !== "academy") {
                 fields.push({ id: "q5", label: "Предоставьте свои откаты", placeholder: "Ссылка на откат с ГГ от 5 минут", style: TextInputStyle.Paragraph });
             }
@@ -302,7 +308,8 @@ client.on(Events.InteractionCreate, async (i) => {
                 ))
             );
 
-            return i.showModal(modal);
+            await i.showModal(modal);
+            return;
         }
 
         // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
@@ -314,13 +321,12 @@ client.on(Events.InteractionCreate, async (i) => {
                 q2: i.fields.getTextInputValue("q2"),
                 q3: i.fields.getTextInputValue("q3"),
                 q4: i.fields.getTextInputValue("q4"),
-                q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null, // Безопасное получение для Academy
+                q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null,
                 userId: i.user.id
             };
 
             applications.set(i.user.id, data);
 
-            // ИЗМЕНЕНИЕ: Название канала теперь включает тип (academy-... или capture-...) для точной выдачи ролей позже
             const channel = await i.guild.channels.create({
                 name: `${type}-${i.user.username.toLowerCase()}`,
                 type: ChannelType.GuildText,
@@ -335,7 +341,6 @@ client.on(Events.InteractionCreate, async (i) => {
             const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
             const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            // Сборка текста описания (без строки отката для Academy)
             let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
 ${data.q1}
 
@@ -371,8 +376,8 @@ ${data.q4}`;
             );
 
             await channel.send({ content: topContent, embeds: [embed], components: [row] });
-
-            return i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
+            await i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
+            return;
         }
 
         // ОБРАБОТКА ВЫБОРА ВОЙСА (ДЛЯ ОБЗВОНА)
@@ -380,7 +385,6 @@ ${data.q4}`;
             const targetId = i.customId.replace("call_voice_", "");
             const voiceChannelId = i.values[0];
 
-            // Находим главное сообщение с эмбедом в текущем тикете, чтобы обновить визуальный статус
             const messages = await i.channel.messages.fetch({ limit: 20 });
             const appMessage = messages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
 
@@ -390,10 +394,9 @@ ${data.q4}`;
                 await appMessage.edit({ embeds: [embed] });
             }
 
-            // ИЗМЕНЕНИЕ: Уведомление в тикете с упоминанием выбранного голосового канала
             await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>! Пожалуйста, зайдите в голосовой канал <#${voiceChannelId}>.`);
-
-            return i.reply({ content: "✅ Голосовой канал успешно отправлен в тикет!", ephemeral: true });
+            await i.reply({ content: "✅ Голосовой канал успешно отправлен в тикет!", ephemeral: true });
+            return;
         }
 
         // ОБРАБОТКА КНОПОК
@@ -403,7 +406,8 @@ ${data.q4}`;
 
             const hasPermission = config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
             if (!hasPermission) {
-                return i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
+                await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
+                return;
             }
 
             // Кнопки отчетов скриншотов
@@ -421,6 +425,7 @@ ${data.q4}`;
                     embed.setColor("Red").setTitle("📸 Отчёт отклонён");
                     await i.update({ embeds: [embed], components: [] });
                 }
+                return;
             }
 
             // Кнопки управления заявками (app)
@@ -431,7 +436,10 @@ ${data.q4}`;
                 const embed = EmbedBuilder.from(i.message.embeds[0]);
 
                 if (action === "accept") {
-                    if (!targetMember) return i.reply({ content: "❌ Пользователь вышел с сервера.", ephemeral: true });
+                    if (!targetMember) {
+                        await i.reply({ content: "❌ Пользователь вышел с сервера.", ephemeral: true });
+                        return;
+                    }
                     
                     const isAcademy = i.channel.name.startsWith("academy");
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
@@ -441,15 +449,16 @@ ${data.q4}`;
                     await i.update({ embeds: [embed], components: [] });
                     await i.channel.send(`🎉 <@${targetId}> успешно принят! Канал удалится через 15 секунд.`);
                     setTimeout(() => i.channel.delete().catch(() => null), 15000);
+                    return;
                 }
 
                 if (action === "review") {
                     embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
                     await i.update({ embeds: [embed] });
                     await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
+                    return;
                 }
 
-                // ИЗМЕНЕНИЕ: Кнопка вызова на обзвон теперь предлагает выбрать голосовой канал
                 if (action === "call") {
                     const voiceMenu = new ActionRowBuilder().addComponents(
                         new ChannelSelectMenuBuilder()
@@ -458,11 +467,12 @@ ${data.q4}`;
                             .addChannelTypes(ChannelType.GuildVoice)
                     );
 
-                    return i.reply({
+                    await i.reply({
                         content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
                         components: [voiceMenu],
                         ephemeral: true
                     });
+                    return;
                 }
 
                 if (action === "reject") {
@@ -470,12 +480,13 @@ ${data.q4}`;
                     await i.update({ embeds: [embed], components: [] });
                     await i.channel.send(`❌ Заявка отклонена. Канал будет удален через 15 секунд.`);
                     setTimeout(() => i.channel.delete().catch(() => null), 15000);
+                    return;
                 }
             }
         }
 
     } catch (e) {
-        console.log("[INTERACTION ERROR]", e);
+        console.log("[INTERACTION ERROR HANDLED]", e);
     }
 });
 
