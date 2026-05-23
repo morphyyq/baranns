@@ -23,7 +23,9 @@ const {
 // =====================================================
 const app = express();
 
-app.get("/", (_, res) => res.send("Bot Alive"));
+app.get("/", (_, res) => {
+    res.send("Bot Alive");
+});
 
 app.listen(process.env.PORT || 3000, () => {
     console.log("[WEB] SERVER STARTED");
@@ -40,7 +42,10 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers
     ],
-    partials: [Partials.Channel, Partials.Message]
+    partials: [
+        Partials.Channel,
+        Partials.Message
+    ]
 });
 
 
@@ -73,29 +78,41 @@ const DB_FILE = path.join(__dirname, "salary.json");
 
 function loadDB() {
     try {
-        return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+        return JSON.parse(
+            fs.readFileSync(DB_FILE, "utf8")
+        );
     } catch {
         return {};
     }
 }
 
 function saveDB(data) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    fs.writeFileSync(
+        DB_FILE,
+        JSON.stringify(data, null, 2)
+    );
 }
 
 let salary = loadDB();
 
 
 // =====================================================
-// 🔒 ANTI DUPLICATE LOCK
+// 🔒 ANTI DUPLICATE
 // =====================================================
 const processed = new Set();
 
 function lockMessage(id) {
-    if (processed.has(id)) return true;
+
+    if (processed.has(id)) {
+        return true;
+    }
+
     processed.add(id);
 
-    setTimeout(() => processed.delete(id), 120000);
+    setTimeout(() => {
+        processed.delete(id);
+    }, 120000);
+
     return false;
 }
 
@@ -103,15 +120,25 @@ function lockMessage(id) {
 // =====================================================
 // 🛡 ERROR HANDLERS
 // =====================================================
-process.on("unhandledRejection", e => console.log("[UNHANDLED]", e));
-process.on("uncaughtException", e => console.log("[CRASH]", e));
+process.on("unhandledRejection", (err) => {
+    console.log("[UNHANDLED]", err);
+});
+
+process.on("uncaughtException", (err) => {
+    console.log("[CRASH]", err);
+});
 
 
 // =====================================================
 // ✅ READY
 // =====================================================
 client.once(Events.ClientReady, () => {
+
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
+
+    console.log(`[SCREEN] ${CHANNELS.SCREEN}`);
+    console.log(`[AUDIT] ${CHANNELS.AUDIT}`);
+    console.log(`[SALARY] ${CHANNELS.SALARY}`);
 });
 
 
@@ -119,36 +146,90 @@ client.once(Events.ClientReady, () => {
 // 📸 SCREEN SYSTEM
 // =====================================================
 client.on(Events.MessageCreate, async (msg) => {
+
     try {
 
-        if (!msg?.author || msg.author.bot) return;
+        // =================================================
+        // IGNORE BOTS
+        // =================================================
+        if (!msg?.author) return;
+        if (msg.author.bot) return;
+
+
+        // =================================================
+        // 💰 BALANCE
+        // =================================================
+        if (msg.content === "/balance") {
+
+            return msg.reply({
+                content: `💰 Ваш баланс: ${salary[msg.author.id] || 0}`
+            });
+        }
+
+
+        // =================================================
+        // 📸 ONLY SCREEN CHANNEL
+        // =================================================
         if (msg.channel.id !== CHANNELS.SCREEN) return;
 
-        // 🔒 LOCK FIRST
+
+        // =================================================
+        // 🔒 HARD LOCK
+        // =================================================
         if (lockMessage(msg.id)) return;
 
+
+        // =================================================
         // 📎 ONLY ONE IMAGE
+        // =================================================
         const att = msg.attachments
-            .filter(a => a.contentType?.startsWith("image"))
+            .filter(a =>
+                a.contentType?.startsWith("image")
+            )
             .first();
 
         if (!att) return;
 
+
+        // =================================================
+        // 🛡 AUDIT CHANNEL
+        // =================================================
         const audit = await client.channels.fetch(CHANNELS.AUDIT);
+
         if (!audit) return;
 
+
+        // =================================================
+        // 📂 FILE
+        // =================================================
+        const fileName = att.name || "image.png";
+
         const file = new AttachmentBuilder(att.url, {
-            name: att.name || "image.png"
+            name: fileName
         });
 
+
+        // =================================================
+        // 🎨 EMBED
+        // =================================================
         const embed = new EmbedBuilder()
             .setTitle("📸 Новый отчёт")
-            .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
+            .setDescription(
+                `👤 Рекрут: <@${msg.author.id}>`
+            )
+            .setImage(`attachment://${fileName}`)
             .setColor("Blue")
-            .setFooter({ text: `ID: ${msg.author.id}` })
+            .setFooter({
+                text: `ID: ${msg.author.id}`
+            })
             .setTimestamp();
 
+
+        // =================================================
+        // 🔘 BUTTONS
+        // =================================================
         const row = new ActionRowBuilder().addComponents(
+
             new ButtonBuilder()
                 .setCustomId(`accept_${msg.author.id}`)
                 .setLabel("Принять")
@@ -160,16 +241,30 @@ client.on(Events.MessageCreate, async (msg) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
-        const auditMsg = await audit.send({
+
+        // =================================================
+        // 📤 SEND
+        // =================================================
+        await audit.send({
             embeds: [embed],
             files: [file],
             components: [row]
         });
 
-        // 💀 delete original after 10 sec
-        setTimeout(() => msg.delete().catch(() => {}), 10000);
+
+        // =================================================
+        // 🧹 DELETE ORIGINAL
+        // =================================================
+        setTimeout(async () => {
+
+            try {
+                await msg.delete();
+            } catch {}
+
+        }, 10000);
 
     } catch (e) {
+
         console.log("[SCREEN ERROR]", e);
     }
 });
@@ -179,6 +274,7 @@ client.on(Events.MessageCreate, async (msg) => {
 // ⚡ INTERACTIONS
 // =====================================================
 client.on(Events.InteractionCreate, async (i) => {
+
     try {
 
         // =================================================
@@ -186,11 +282,12 @@ client.on(Events.InteractionCreate, async (i) => {
         // =================================================
         if (i.isChatInputCommand() && i.commandName === "all") {
 
-            const allowed = i.member.roles.cache.some(r =>
-                ALLOWED_ROLES.includes(r.id)
+            const allowed = i.member.roles.cache.some(role =>
+                ALLOWED_ROLES.includes(role.id)
             );
 
             if (!allowed) {
+
                 return i.reply({
                     content: "❌ Нет прав",
                     ephemeral: true
@@ -199,13 +296,15 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const text = i.options.getString("text");
 
-            await i.deferReply({ ephemeral: true });
+            await i.deferReply({
+                ephemeral: true
+            });
 
             const members = await i.guild.members.fetch();
 
-            const users = [...members.values()].filter(m =>
-                !m.user.bot &&
-                m.roles.cache.has(ROLE_TARGET)
+            const users = [...members.values()].filter(member =>
+                !member.user.bot &&
+                member.roles.cache.has(ROLE_TARGET)
             );
 
             const embed = new EmbedBuilder()
@@ -220,34 +319,60 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const CONCURRENCY = 5;
 
+
             async function worker() {
+
                 while (index < users.length) {
+
                     const user = users[index++];
 
                     try {
-                        await user.send({ embeds: [embed] });
+
+                        await user.send({
+                            embeds: [embed]
+                        });
+
                         sent++;
+
                     } catch {
+
                         failed++;
                     }
 
-                    await new Promise(r => setTimeout(r, 700));
+                    await new Promise(resolve =>
+                        setTimeout(resolve, 700)
+                    );
                 }
             }
 
-            const workers = Array.from({ length: CONCURRENCY }, worker);
+            const workers = Array.from(
+                { length: CONCURRENCY },
+                worker
+            );
 
+
+            // =================================================
+            // 📊 LIVE PROGRESS
+            // =================================================
             const progress = setInterval(() => {
-                i.editReply(`📨 ${sent + failed}/${users.length} | ✅ ${sent} | ❌ ${failed}`)
-                    .catch(() => {});
+
+                i.editReply(
+                    `📨 ${sent + failed}/${users.length} | ✅ ${sent} | ❌ ${failed}`
+                ).catch(() => {});
+
             }, 3000);
+
 
             await Promise.all(workers);
 
             clearInterval(progress);
 
+
+            // =================================================
+            // ✅ FINAL
+            // =================================================
             return i.editReply(
-                `✅ Готово\n📨 ${users.length}\n✅ ${sent}\n❌ ${failed}`
+                `✅ Рассылка завершена\n\n📨 Всего: ${users.length}\n✅ Успешно: ${sent}\n❌ Ошибки: ${failed}`
             );
         }
 
@@ -260,7 +385,9 @@ client.on(Events.InteractionCreate, async (i) => {
         const [action, userId] = i.customId.split("_");
 
         const salaryChannel = await client.channels.fetch(CHANNELS.SALARY);
+
         if (!salaryChannel) return;
+
 
         // =================================================
         // ✅ ACCEPT
@@ -268,40 +395,52 @@ client.on(Events.InteractionCreate, async (i) => {
         if (action === "accept") {
 
             salary[userId] = (salary[userId] || 0) + 10000;
+
             saveDB(salary);
 
             const embed = new EmbedBuilder()
                 .setTitle("💰 Зарплата выдана")
-                .setDescription(`👤 <@${userId}>`)
+                .setDescription(`👤 Пользователь: <@${userId}>`)
                 .addFields(
-                    { name: "💵 +10000", value: "Выдано", inline: true },
-                    { name: "📊 Баланс", value: `${salary[userId]}`, inline: true }
+                    {
+                        name: "💵 Сумма",
+                        value: "+10000",
+                        inline: true
+                    },
+                    {
+                        name: "📊 Баланс",
+                        value: `${salary[userId]}`,
+                        inline: true
+                    }
                 )
                 .setColor("Green")
                 .setTimestamp();
 
-            await i.update({
-                content: `✅ Выдано <@${userId}>`,
-                embeds: [],
-                components: []
+            await salaryChannel.send({
+                embeds: [embed]
             });
 
-            await salaryChannel.send({ embeds: [embed] });
+            // 🧹 DELETE AUDIT MESSAGE
+            try {
+                await i.message.delete();
+            } catch {}
+
+            return;
         }
+
 
         // =================================================
         // ❌ REJECT
         // =================================================
         if (action === "reject") {
 
-            await i.update({
-                content: "❌ Отклонено",
-                embeds: [],
-                components: []
-            });
+            try {
+                await i.message.delete();
+            } catch {}
         }
 
     } catch (e) {
+
         console.log("[INTERACTION ERROR]", e);
     }
 });
