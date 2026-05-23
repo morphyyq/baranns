@@ -86,11 +86,11 @@ const SERVERS = {
         ACADEMY_ROLES: [
             "1458410756453306490",
             "1458485405769797848",
-            "1507798049416675531" // Добавлена третья роль для академии
+            "1507798049416675531"
         ],
         CAPTURE_ROLES: [
             "1458410756453306490",
-            "1475114013611528274" // Роли для каптур (1475515378783223933 убрана согласно ТЗ)
+            "1475114013611528274"
         ]
     }
 };
@@ -168,7 +168,47 @@ client.on(Events.MessageCreate, async (msg) => {
             });
         }
 
-        // SCREEN SYSTEM
+        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
+        if (msg.channel.name?.startsWith("closed-")) {
+            const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
+            if (!att) return; // Игнорируем сообщения без картинок
+
+            const hasPermission = config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
+            if (!hasPermission) return; // Игнорируем, если пишет не админ
+
+            // Ищем исходный эмбед заявки в истории канала, чтобы вытащить данные кандидата
+            const channelMessages = await msg.channel.messages.fetch({ limit: 50 });
+            const appMessage = channelMessages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
+            
+            let candidateText = "Не удалось определить";
+            if (appMessage) {
+                // Ищем упоминание пользователя или ID в полях эмбеда
+                const description = appMessage.embeds[0].description || "";
+                const userMatch = description.match(/<@(\d+)>/);
+                if (userMatch) candidateText = `<@${userMatch[1]}>`;
+            }
+
+            const auditChannel = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
+            if (auditChannel) {
+                const file = new AttachmentBuilder(att.url, { name: att.name || "tablet_screen.png" });
+                
+                const auditEmbed = new EmbedBuilder()
+                    .setTitle("📋 Отчёт по принятой заявке")
+                    .setDescription(`👤 **Администратор:** <@${msg.author.id}>\n👤 **Принятый кандидат:** ${candidateText}\n📂 **Тикет:** \`${msg.channel.name}\``)
+                    .setImage(`attachment://${file.name}`)
+                    .setColor("Purple")
+                    .setTimestamp();
+
+                await auditChannel.send({ embeds: [auditEmbed], files: [file] });
+            }
+
+            // Уведомляем и удаляем тикет через 3 секунды
+            await msg.channel.send("✅ Отчёт успешно зафиксирован в аудите! Тикет удаляется...");
+            setTimeout(() => msg.channel.delete().catch(() => null), 3000);
+            return;
+        }
+
+        // SCREEN SYSTEM (Для обычных отчетов рекрутов)
         if (msg.channel.id !== config.CHANNELS.SCREEN) return;
         
         if (processed.has(msg.id)) return;
@@ -499,7 +539,7 @@ ${data.q4}`;
 
                     // Запрашиваем скриншот отчета у администратора
                     await i.channel.send({
-                        content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **предоставьте отчёт (скрин с планшета)** в этот канал.`
+                        content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **отправьте сюда скриншот с планшета**, чтобы зафиксировать отчёт в аудите и закрыть тикет.`
                     });
                     return;
                 }
