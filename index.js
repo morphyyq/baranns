@@ -53,24 +53,23 @@ const client = new Client({
 // 📌 CONFIG
 // =====================================================
 const SERVERS = {
-
     "1458190222042075251": {
         CHANNELS: {
             SCREEN: "1499706104345792512",
             AUDIT: "1500501911848095906",
             SALARY: "1500515048970522685",
-            APPLICATION_PANEL: "1458410655697731730",
-            APPLICATION_CATEGORY: "1458410646956806196",
-            APPLICATION_AUDIT: "1464575195418460417"
+            PANEL: "1458410655697731730",
+            CATEGORY: "1458410646956806196",
+            AUDIT_APP: "1464575195418460417"
         },
+
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
             "1458192781217370173",
             "1458484199735689299",
             "1468704257606684712"
-        ],
-        ROLE_TARGET: "1458410756453306490"
+        ]
     }
 };
 
@@ -107,48 +106,54 @@ function lockMessage(id) {
 
 
 // =====================================================
-// READY
+// READY (AUTO PANEL)
 // =====================================================
 client.once(Events.ClientReady, async () => {
 
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
 
-    // auto panel (RP UI)
     const channel = await client.channels.fetch("1458410655697731730");
 
     if (channel) {
-        await channel.send({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle("🚀 Заявки в семью Darkness")
-                    .setDescription(
-`Нажмите ниже чтобы подать заявку
 
-🎓 Academy — обучение
-⚔️ Capture — боевой состав
+        const embed = new EmbedBuilder()
+            .setTitle("## 🚀 Заявки в семью Darkness ##")
+            .setDescription(
+`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
-⏳ 1–4 дня рассмотрение`
-                    )
-                    .setColor("#2b2d31")
-            ],
-            components: [
-                new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("apply_menu")
-                        .setPlaceholder("Выберите тип заявки")
-                        .addOptions(
-                            { label: "Academy", value: "academy", emoji: "🎓" },
-                            { label: "Capture", value: "capture", emoji: "⚔️" }
-                        )
+⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
+
+### 🎓 Academy ###
+• Обучение и развитие
+• Откаты не требуются
+
+### ⚔️ Capture ###
+• Боевой состав
+• Откаты от 5 минут GG
+
+━━━━━━━━━━━━━━
+
+⚠️ Перед подачей ознакомьтесь с правилами`
+            )
+            .setColor("#2b2d31");
+
+        const menu = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId("apply_menu")
+                .setPlaceholder("Выберите тип заявки")
+                .addOptions(
+                    { label: "Academy", value: "academy", emoji: "🎓" },
+                    { label: "Capture", value: "capture", emoji: "⚔️" }
                 )
-            ]
-        });
+        );
+
+        await channel.send({ embeds: [embed], components: [menu] });
     }
 });
 
 
 // =====================================================
-// MESSAGE SYSTEM (SCREEN + BALANCE)
+// MESSAGE SYSTEM
 // =====================================================
 client.on(Events.MessageCreate, async (msg) => {
 
@@ -161,9 +166,7 @@ client.on(Events.MessageCreate, async (msg) => {
         return msg.reply({ content: `💰 Баланс: ${salary[msg.author.id] || 0}` });
     }
 
-    if (!config.CHANNELS.SCREEN) return;
     if (msg.channel.id !== config.CHANNELS.SCREEN) return;
-
     if (lockMessage(msg.id)) return;
 
     const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
@@ -200,16 +203,16 @@ client.on(Events.InteractionCreate, async (i) => {
     if (!config) return;
 
     // =================================================
-    // /PANEL COMMAND
+    // /PANEL
     // =================================================
     if (i.isChatInputCommand() && i.commandName === "panel") {
 
-        const channel = await client.channels.fetch(config.CHANNELS.APPLICATION_PANEL);
+        const channel = await client.channels.fetch(config.CHANNELS.PANEL);
 
         await channel.send({
             embeds: [
                 new EmbedBuilder()
-                    .setTitle("🚀 Darkness Recruitment")
+                    .setTitle("🚀 Darkness Recruitment System")
                     .setDescription("Выберите тип заявки ниже")
                     .setColor("#2b2d31")
             ],
@@ -230,7 +233,7 @@ client.on(Events.InteractionCreate, async (i) => {
     }
 
     // =================================================
-    // SELECT MENU
+    // MENU
     // =================================================
     if (i.isStringSelectMenu() && i.customId === "apply_menu") {
 
@@ -283,7 +286,7 @@ client.on(Events.InteractionCreate, async (i) => {
         const channel = await i.guild.channels.create({
             name: `app-${nick.replace(/\s/g, "-")}`,
             type: ChannelType.GuildText,
-            parent: config.CHANNELS.APPLICATION_CATEGORY,
+            parent: config.CHANNELS.CATEGORY,
             permissionOverwrites: [
                 { id: i.guild.id, deny: ["ViewChannel"] },
                 { id: i.user.id, allow: ["ViewChannel", "SendMessages"] }
@@ -311,7 +314,7 @@ ${data.q4}`
 
         await channel.send({ embeds: [embed], components: [row] });
 
-        return i.reply({ content: "✅ Отправлено", ephemeral: true });
+        return i.reply({ content: "✅ Заявка отправлена", ephemeral: true });
     }
 
     // =================================================
@@ -326,7 +329,7 @@ ${data.q4}`
         if (!i.member.roles.cache.some(r => config.ALLOWED_ROLES.includes(r.id)))
             return;
 
-        const audit = await i.guild.channels.fetch(config.CHANNELS.APPLICATION_AUDIT);
+        const audit = await client.channels.fetch(config.CHANNELS.AUDIT_APP);
 
         // ACCEPT
         if (i.customId.startsWith("app_accept")) {
@@ -385,14 +388,14 @@ ${data.q4}`
     }
 
     // =================================================
-    // VOICE SELECT
+    // VOICE
     // =================================================
     if (i.isChannelSelectMenu() && i.customId.startsWith("voice_select_")) {
 
         const userId = i.customId.split("_")[2];
         const voice = await i.guild.channels.fetch(i.values[0]);
 
-        const audit = await i.guild.channels.fetch(config.CHANNELS.APPLICATION_AUDIT);
+        const audit = await i.guild.channels.fetch(config.CHANNELS.AUDIT_APP);
 
         await audit.send({
             embeds: [
@@ -405,32 +408,6 @@ ${data.q4}`
         return i.update({ content: "✔ OK", components: [] });
     }
 });
-
-
-// =====================================================
-// SLASH REGISTER
-// =====================================================
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
-(async () => {
-    try {
-        await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            {
-                body: [
-                    new SlashCommandBuilder()
-                        .setName("panel")
-                        .setDescription("Send recruitment panel")
-                        .toJSON()
-                ]
-            }
-        );
-
-        console.log("Slash commands registered");
-    } catch (e) {
-        console.log(e);
-    }
-})();
 
 
 // =====================================================
