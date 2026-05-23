@@ -55,7 +55,6 @@ const client = new Client({
     ]
 });
 
-// Глобальный перехватчик ошибок API, чтобы бот никогда не падал от лагов сети
 client.on(Events.Error, (error) => {
     console.error("[GLOBAL DISCORD ERROR]", error);
 });
@@ -394,8 +393,24 @@ ${data.q4}`;
                 await appMessage.edit({ embeds: [embed] });
             }
 
-            await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>! Пожалуйста, зайдите в голосовой канал <#${voiceChannelId}>.`);
-            await i.reply({ content: "✅ Голосовой канал успешно отправлен в тикет!", ephemeral: true });
+            // Генерируем прямую интернет-ссылку на голосовой канал
+            const voiceUrl = `https://discord.com/channels/${i.guild.id}/${voiceChannelId}`;
+
+            // ОТПРАВКА ССЫЛКИ В ТИКЕТ
+            await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>!\nПожалуйста, перейдите в голосовой канал: [Войти в голосовой канал](${voiceUrl}) (<#${voiceChannelId}>).`);
+
+            // ОТПРАВКА УВЕДОМЛЕНИЯ В ЛС КАНДИДАТУ
+            const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
+            if (targetMember) {
+                await targetMember.send({
+                    content: `🔔 **Привет!** Твоя заявка в семью **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовому каналу по прямой ссылке:\n${voiceUrl}`
+                }).catch(() => {
+                    // Если ЛС закрыты, бот не упадет, а выдаст инфо в тикет
+                    i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
+                });
+            }
+
+            await i.reply({ content: "✅ Ссылка отправлена кандидату в тикет и в ЛС!", ephemeral: true });
             return;
         }
 
