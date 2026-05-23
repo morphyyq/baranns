@@ -535,7 +535,7 @@ Username: ${i.user.tag}`
             });
 
             return i.reply({
-                content: "✅ Заявка отправлена",
+                content: `🚀 Ваша заявка успешно создана!\n📨 Перейдите сюда: <#${channel.id}>`,
                 ephemeral: true
             });
         }
