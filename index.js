@@ -449,7 +449,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const channel = await i.guild.channels.create({
 
-                name: `заявление-${nick.split("|")[0].trim().toLowerCase()}-${i.user.username}`,
+                name: `заявление-${i.user.username.toLowerCase()}`,
 
                 type: ChannelType.GuildText,
 
