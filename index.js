@@ -336,16 +336,9 @@ client.on(Events.InteractionCreate, async (i) => {
             );
 
             await channel.send({
-    content: [
-        "<@&1471553901433192532>",
-        "<@&1458192704524648701>",
-        "<@&1458192781217370173>",
-        "<@&1458484199735689299>",
-        "<@&1468704257606684712>"
-    ].join(" "),
-    embeds: [embed],
-    components: [row]
-});
+                embeds: [embed],
+                components: [menu]
+            });
 
             return i.reply({
                 content: "✅ Панель отправлена",
@@ -454,7 +447,13 @@ client.on(Events.InteractionCreate, async (i) => {
 
             applications.set(i.user.id, data);
 
-            const channel = await i.guild.channels.create({
+           const rolesPing = config.ALLOWED_ROLES
+    .map(r => `<@&${r}>`)
+    .join(" ");
+
+await channel.send({
+    content: rolesPing
+});
 
                 name: `заявление-${i.user.username.toLowerCase()}`,
 
@@ -536,16 +535,9 @@ ${data.q4}
             );
 
             await channel.send({
-    content: [
-        "<@&1471553901433192532>",
-        "<@&1458192704524648701>",
-        "<@&1458192781217370173>",
-        "<@&1458484199735689299>",
-        "<@&1468704257606684712>"
-    ].join(" "),
-    embeds: [embed],
-    components: [row]
-});
+                embeds: [embed],
+                components: [row]
+            });
 
             return i.reply({
                 content: "✅ Заявка отправлена",
