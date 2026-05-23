@@ -55,9 +55,9 @@ const client = new Client({
 const SERVERS = {
 
     // =================================================
-    // SERVER 1 (СТАРЫЙ)
+    // SERVER 1 (SCREEN SYSTEM + /all)
     // =================================================
-    "YOUR_FIRST_SERVER_ID": {
+    "1458190222042075251": {
 
         CHANNELS: {
             SCREEN: "1499706104345792512",
@@ -76,17 +76,14 @@ const SERVERS = {
 
 
     // =================================================
-    // SERVER 2 (НОВЫЙ)
+    // SERVER 2 (/all ONLY)
     // =================================================
-    "YOUR_SECOND_SERVER_ID": {
+    "1504470399268819115": {
 
-        // screen system не нужен
         CHANNELS: {},
 
-        // кому отправлять /all
         ROLE_TARGET: "1504470450305241288",
 
-        // кто может использовать /all
         ALLOWED_ROLES: [
             "1504470484950192160",
             "1504470549064323284"
@@ -103,10 +100,13 @@ const DB_FILE = path.join(__dirname, "salary.json");
 function loadDB() {
 
     try {
+
         return JSON.parse(
             fs.readFileSync(DB_FILE, "utf8")
         );
+
     } catch {
+
         return {};
     }
 }
@@ -206,7 +206,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
         // =================================================
-        // 📎 ONLY IMAGE
+        // 📎 IMAGE
         // =================================================
         const att = msg.attachments
             .filter(a =>
@@ -218,7 +218,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
         // =================================================
-        // 📂 AUDIT
+        // 📂 AUDIT CHANNEL
         // =================================================
         const audit = await client.channels.fetch(
             config.CHANNELS.AUDIT
@@ -354,6 +354,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const CONCURRENCY = 5;
 
+
             async function worker() {
 
                 while (index < users.length) {
@@ -384,6 +385,10 @@ client.on(Events.InteractionCreate, async (i) => {
                 worker
             );
 
+
+            // =================================================
+            // 📊 LIVE PROGRESS
+            // =================================================
             const progress = setInterval(() => {
 
                 i.editReply(
@@ -392,10 +397,15 @@ client.on(Events.InteractionCreate, async (i) => {
 
             }, 3000);
 
+
             await Promise.all(workers);
 
             clearInterval(progress);
 
+
+            // =================================================
+            // ✅ FINAL
+            // =================================================
             return i.editReply(
                 `✅ Рассылка завершена\n\n📨 Всего: ${users.length}\n✅ Успешно: ${sent}\n❌ Ошибки: ${failed}`
             );
@@ -409,7 +419,10 @@ client.on(Events.InteractionCreate, async (i) => {
 
         const [action, userId] = i.customId.split("_");
 
-        // screen system only server 1
+
+        // =================================================
+        // ONLY SERVER 1 BUTTON SYSTEM
+        // =================================================
         if (!config.CHANNELS?.SALARY) return;
 
         const salaryChannel = await client.channels.fetch(
@@ -430,7 +443,9 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const embed = new EmbedBuilder()
                 .setTitle("💰 Зарплата выдана")
-                .setDescription(`👤 Пользователь: <@${userId}>`)
+                .setDescription(
+                    `👤 Пользователь: <@${userId}>`
+                )
                 .addFields(
                     {
                         name: "💵 Сумма",
