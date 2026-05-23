@@ -5,6 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 
+// Генерируем уникальный ID для этой запущенной копии бота
+const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
+
 const {
     Client,
     GatewayIntentBits,
@@ -33,7 +36,7 @@ const {
 const app = express();
 
 app.get("/", (_, res) => {
-    res.send("Bot Alive");
+    res.send(`Bot Alive (Instance: ${INSTANCE_ID})`);
 });
 
 app.listen(process.env.PORT || 3000);
@@ -56,7 +59,7 @@ const client = new Client({
 });
 
 client.on(Events.Error, (error) => {
-    console.error("[GLOBAL DISCORD ERROR]", error);
+    console.error(`[GLOBAL DISCORD ERROR] [${INSTANCE_ID}]`, error);
 });
 
 
@@ -125,7 +128,7 @@ const modalLocks = new Set();
 // READY & REGISTER COMMANDS
 // =====================================================
 client.once(Events.ClientReady, async () => {
-    console.log(`[BOT] ONLINE: ${client.user.tag}`);
+    console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
@@ -135,16 +138,16 @@ client.once(Events.ClientReady, async () => {
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
     try {
-        console.log("[BOT] Начало обновления слэш-команд...");
+        console.log(`[BOT] [${INSTANCE_ID}] Начало обновления слэш-команд...`);
         for (const guildId of Object.keys(SERVERS)) {
             await rest.put(
                 Routes.applicationGuildCommands(client.user.id, guildId),
                 { body: commands }
             );
         }
-        console.log("[BOT] Слэш-команды успешно зарегистрированы!");
+        console.log(`[BOT] [${INSTANCE_ID}] Слэш-команды успешно зарегистрированы!`);
     } catch (e) {
-        console.error("[BOT ERROR] Не удалось зарегистрировать команды:", e);
+        console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
     }
 });
 
@@ -209,7 +212,7 @@ client.on(Events.MessageCreate, async (msg) => {
         }, 10000);
 
     } catch (e) {
-        console.log("[MESSAGE ERROR]", e);
+        console.log(`[MESSAGE ERROR] [${INSTANCE_ID}]`, e);
     }
 });
 
@@ -310,13 +313,19 @@ client.on(Events.InteractionCreate, async (i) => {
 
         // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
-            if (modalLocks.has(i.user.id)) return;
+            console.log(`[LOG] [${INSTANCE_ID}] Пользователь ${i.user.tag} отправил модалку.`);
+
+            if (modalLocks.has(i.user.id)) {
+                console.log(`[LOG] [${INSTANCE_ID}] Сработал замок! Отклоняю дубликат запроса.`);
+                return;
+            }
             modalLocks.add(i.user.id);
             setTimeout(() => modalLocks.delete(i.user.id), 5000);
 
             const type = i.customId.replace("apply_modal_", "");
             const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
 
+            console.log(`[LOG] [${INSTANCE_ID}] Проверяю наличие канала ${expectedChannelName}...`);
             await i.guild.channels.fetch().catch(() => null);
 
             const existingChannel = i.guild.channels.cache.find(c => 
@@ -325,9 +334,12 @@ client.on(Events.InteractionCreate, async (i) => {
             );
 
             if (existingChannel) {
+                console.log(`[LOG] [${INSTANCE_ID}] Канал уже существует, отменяю создание.`);
                 await i.reply({ content: `⚠️ Ваша заявка уже создана: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
                 return;
             }
+
+            console.log(`[LOG] [${INSTANCE_ID}] Всё чисто. Начинаю создание канала...`);
 
             const data = {
                 type,
@@ -469,67 +481,4 @@ ${data.q4}`;
                     
                     const isAcademy = i.channel.name.startsWith("academy");
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
-                    await targetMember.roles.add(rolesToAdd).catch(() => null);
-
-                    embed.setColor("Green").setTitle("Заявление (Одобрено)");
-                    await i.update({ embeds: [embed], components: [] });
-                    await i.channel.send(`🎉 <@${targetId}> успешно принят! Канал удалится через 15 секунд.`);
-                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
-                    return;
-                }
-
-                if (action === "review") {
-                    embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
-                    await i.update({ embeds: [embed] });
-                    await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
-                    return;
-                }
-
-                if (action === "call") {
-                    const voiceMenu = new ActionRowBuilder().addComponents(
-                        new ChannelSelectMenuBuilder()
-                            .setCustomId(`call_voice_${targetId}`)
-                            .setPlaceholder("Выберите голосовой канал для кандидата")
-                            .addChannelTypes(ChannelType.GuildVoice)
-                    );
-
-                    await i.reply({
-                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
-                        components: [voiceMenu],
-                        ephemeral: true
-                    });
-                    return;
-                }
-
-                if (action === "reject") {
-                    embed.setColor("Red").setTitle("Заявление (Отклонено)");
-                    await i.update({ embeds: [embed], components: [] });
-                    await i.channel.send(`❌ Заявка отклонена. Канал будет удален через 15 секунд.`);
-                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
-                    return;
-                }
-            }
-        }
-
-    } catch (e) {
-        console.log("[INTERACTION ERROR HANDLED]", e);
-    }
-});
-
-
-// =====================================================
-// ПРАВИЛЬНОЕ ВЫКЛЮЧЕНИЕ ДЛЯ RENDER (SIGTERM/SIGINT)
-// =====================================================
-const shutdown = () => {
-    console.log("[BOT] Получен сигнал выключения. Отключаюсь...");
-    client.destroy();
-    process.exit(0);
-};
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
-
-
-// =====================================================
-// LOGIN
-// =====================================================
-client.login(process.env.TOKEN);
+                    await
