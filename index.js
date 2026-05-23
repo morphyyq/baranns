@@ -334,7 +334,6 @@ client.on(Events.InteractionCreate, async (i) => {
                         }
                     )
             );
-
             await channel.send({
     content: [
         "<@&1471553901433192532>",
@@ -346,8 +345,7 @@ client.on(Events.InteractionCreate, async (i) => {
     embeds: [embed],
     components: [row]
 });
-
-            return i.reply({
+          return i.reply({
                 content: "✅ Панель отправлена",
                 ephemeral: true
             });
