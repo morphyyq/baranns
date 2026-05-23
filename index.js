@@ -13,6 +13,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     EmbedBuilder,
+    AttachmentBuilder,
     Events
 } = require('discord.js');
 
@@ -49,7 +50,7 @@ const client = new Client({
 // 📌 CHANNELS
 // =====================================================
 const CHANNELS = {
-    SCREEN: "1499706104345792512", // 📸 канал скринов
+    SCREEN: "1499706104345792512", // 📸 скрины
     AUDIT: "1500501911848095906",  // 🛡 аудит
     SALARY: "1500515048970522685"  // 💰 зарплаты
 };
@@ -73,6 +74,7 @@ const ALLOWED_ROLES = [
 const DB_FILE = path.join(__dirname, "salary.json");
 
 function loadDB() {
+
     try {
         return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
     } catch {
@@ -81,7 +83,11 @@ function loadDB() {
 }
 
 function saveDB(data) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+
+    fs.writeFileSync(
+        DB_FILE,
+        JSON.stringify(data, null, 2)
+    );
 }
 
 let salary = loadDB();
@@ -112,15 +118,15 @@ function isProcessed(id) {
 // 🛡 ANTI CRASH
 // =====================================================
 process.on("unhandledRejection", (err) => {
-    console.log("[ERROR] Unhandled Rejection:", err?.message || err);
+    console.log("[UNHANDLED]", err?.message || err);
 });
 
 process.on("uncaughtException", (err) => {
-    console.log("[ERROR] Uncaught Exception:", err?.message || err);
+    console.log("[CRASH]", err?.message || err);
 });
 
 process.on("uncaughtExceptionMonitor", (err) => {
-    console.log("[ERROR] Monitor:", err?.message || err);
+    console.log("[MONITOR]", err?.message || err);
 });
 
 
@@ -131,9 +137,9 @@ client.once(Events.ClientReady, () => {
 
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
 
-    console.log(`[SCREEN CHANNEL] ${CHANNELS.SCREEN}`);
-    console.log(`[AUDIT CHANNEL] ${CHANNELS.AUDIT}`);
-    console.log(`[SALARY CHANNEL] ${CHANNELS.SALARY}`);
+    console.log(`[SCREEN] ${CHANNELS.SCREEN}`);
+    console.log(`[AUDIT] ${CHANNELS.AUDIT}`);
+    console.log(`[SALARY] ${CHANNELS.SALARY}`);
 });
 
 
@@ -144,15 +150,15 @@ client.on(Events.MessageCreate, async (msg) => {
 
     try {
 
-        // =========================================
+        // =================================================
         // IGNORE BOTS
-        // =========================================
+        // =================================================
         if (msg.author.bot) return;
 
 
-        // =========================================
+        // =================================================
         // 💰 BALANCE
-        // =========================================
+        // =================================================
         if (msg.content === "/balance") {
 
             return msg.reply({
@@ -161,47 +167,58 @@ client.on(Events.MessageCreate, async (msg) => {
         }
 
 
-        // =========================================
+        // =================================================
         // 📸 ONLY SCREEN CHANNEL
-        // =========================================
+        // =================================================
         if (msg.channel.id !== CHANNELS.SCREEN) return;
 
 
-        // =========================================
+        // =================================================
         // 🧠 ANTI DUPLICATE
-        // =========================================
+        // =================================================
         if (isProcessed(msg.id)) return;
 
 
-        // =========================================
+        // =================================================
         // 📎 ATTACHMENT
-        // =========================================
-        const att = msg.attachments?.first();
+        // =================================================
+        const att = msg.attachments.first();
 
-        if (!att?.url) return;
+        if (!att) return;
 
 
-        // =========================================
+        // =================================================
         // 🖼 ONLY IMAGES
-        // =========================================
+        // =================================================
         if (!att.contentType?.startsWith("image")) return;
 
 
-        // =========================================
+        // =================================================
         // 🛡 AUDIT CHANNEL
-        // =========================================
+        // =================================================
         const audit = await client.channels.fetch(CHANNELS.AUDIT);
 
         if (!audit) return;
 
 
-        // =========================================
+        // =================================================
+        // 📂 FILE
+        // =================================================
+        const fileName = att.name || "image.png";
+
+        const file = new AttachmentBuilder(att.url, {
+            name: fileName
+        });
+
+
+        // =================================================
         // 🎨 EMBED
-        // =========================================
+        // =================================================
         const embed = new EmbedBuilder()
-            .setTitle("📸 Новый скриншот")
-            .setDescription(`👤 Отправил: <@${msg.author.id}>`)
-            .setImage(att.url)
+            .setTitle("📸 Новый отчёт")
+            .setDescription(
+                `👤 Рекрут: <@${msg.author.id}>\n\n📎 Скриншот прикреплён ниже`
+            )
             .setColor("Blue")
             .setFooter({
                 text: `ID: ${msg.author.id}`
@@ -209,9 +226,9 @@ client.on(Events.MessageCreate, async (msg) => {
             .setTimestamp();
 
 
-        // =========================================
+        // =================================================
         // 🔘 BUTTONS
-        // =========================================
+        // =================================================
         const row = new ActionRowBuilder().addComponents(
 
             new ButtonBuilder()
@@ -226,25 +243,26 @@ client.on(Events.MessageCreate, async (msg) => {
         );
 
 
-        // =========================================
+        // =================================================
         // 📤 SEND
-        // =========================================
+        // =================================================
         await audit.send({
             embeds: [embed],
+            files: [file],
             components: [row]
         });
 
 
-        // =========================================
-        // 🧹 DELETE ORIGINAL AFTER 15 SEC
-        // =========================================
+        // =================================================
+        // 🧹 DELETE ORIGINAL AFTER 10 SEC
+        // =================================================
         setTimeout(async () => {
 
             try {
                 await msg.delete();
             } catch {}
 
-        }, 15000);
+        }, 10000);
 
 
     } catch (e) {
@@ -336,9 +354,9 @@ client.on(Events.InteractionCreate, async (i) => {
             );
 
 
-            // =========================================
+            // =================================================
             // 📊 LIVE PROGRESS
-            // =========================================
+            // =================================================
             const progress = setInterval(() => {
 
                 i.editReply(
@@ -353,9 +371,9 @@ client.on(Events.InteractionCreate, async (i) => {
             clearInterval(progress);
 
 
-            // =========================================
+            // =================================================
             // ✅ FINAL
-            // =========================================
+            // =================================================
             return i.editReply(
                 `✅ Рассылка завершена\n\n📨 Всего: ${users.length}\n✅ Успешно: ${sent}\n❌ Ошибки: ${failed}`
             );
