@@ -43,14 +43,15 @@ app.listen(process.env.PORT || 3000);
 
 
 // =====================================================
-// CLIENT
+// CLIENT (Добавлен GuildPresences для отслеживания статусов сети)
 // =====================================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences 
     ],
     partials: [
         Partials.Channel,
@@ -74,7 +75,8 @@ const SERVERS = {
             SALARY: "1500515048970522685",
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
-            AUDIT_APP: "1464575195418460417"
+            AUDIT_APP: "1464575195418460417",
+            MONITOR: "1507787906700415076" // Канал для постоянного мониторинга онлайна
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -91,6 +93,12 @@ const SERVERS = {
         CAPTURE_ROLES: [
             "1458410756453306490",
             "1475114013611528274"
+        ],
+        // Роли для вывода в таблице мониторинга
+        MONITOR_ROLES: [
+            { id: "1468704257606684712", name: "Рекруты" },
+            { id: "1475114013611528274", name: "Каптеры" },
+            { id: "1507798049416675531", name: "RP Состав" }
         ]
     }
 };
@@ -125,6 +133,85 @@ const modalLocks = new Set();
 
 
 // =====================================================
+// MONITORING SYSTEM (Функция обновления онлайна)
+// =====================================================
+async function updateOnlineMonitor() {
+    try {
+        for (const [guildId, config] of Object.entries(SERVERS)) {
+            if (!config.CHANNELS.MONITOR) continue;
+
+            const guild = await client.guilds.fetch(guildId).catch(() => null);
+            if (!guild) continue;
+
+            const channel = await guild.channels.fetch(config.CHANNELS.MONITOR).catch(() => null);
+            if (!channel) continue;
+
+            // Кэшируем всех пользователей сервера для точного определения статусов
+            await guild.members.fetch();
+
+            const embed = new EmbedBuilder()
+                .setTitle("📊 Мониторинг активного состава семьи")
+                .setColor("#2b2d31")
+                .setTimestamp();
+
+            let totalOnline = 0;
+            let totalMembersCount = 0;
+
+            for (const roleData of config.MONITOR_ROLES) {
+                const role = guild.roles.cache.get(roleData.id);
+                if (!role) {
+                    embed.addFields({ name: `❌ ${roleData.name}`, value: "Роль не найдена на сервере", inline: false });
+                    continue;
+                }
+
+                let listString = "";
+                let roleOnline = 0;
+                const members = Array.from(role.members.values());
+
+                if (members.length === 0) {
+                    listString = "*В этой роли никого нет*";
+                } else {
+                    members.forEach(member => {
+                        totalMembersCount++;
+                        // Проверяем статус. Если присутствия нет или статус offline — ставим красный круг
+                        const isOnline = member.presence && member.presence.status !== "offline";
+                        const statusEmoji = isOnline ? "🟢" : "🔴";
+                        
+                        if (isOnline) {
+                            roleOnline++;
+                            totalOnline++;
+                        }
+
+                        listString += `<@${member.id}> — ${statusEmoji}\n`;
+                    });
+                }
+
+                embed.addFields({
+                    name: `👥 ${roleData.name} [В сети: ${roleOnline}/${members.length}]`,
+                    value: listString,
+                    inline: false
+                });
+            }
+
+            embed.setDescription(`📈 **Общий онлайн выбранных ролей:** \`${totalOnline} из ${totalMembersCount}\``);
+
+            // Ищем прошлое сообщение бота в канале, чтобы отредактировать его, а не спамить новыми
+            const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+            const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title?.startsWith("📊 Мониторинг")) : null;
+
+            if (botMessage) {
+                await botMessage.edit({ embeds: [embed] }).catch(() => null);
+            } else {
+                await channel.send({ embeds: [embed] }).catch(() => null);
+            }
+        }
+    } catch (error) {
+        console.error(`[MONITOR ERROR] [${INSTANCE_ID}] Error updating monitor:`, error);
+    }
+}
+
+
+// =====================================================
 // READY & REGISTER COMMANDS
 // =====================================================
 client.once(Events.ClientReady, async () => {
@@ -149,6 +236,10 @@ client.once(Events.ClientReady, async () => {
     } catch (e) {
         console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
     }
+
+    // Запускаем мониторинг онлайна при включении бота и настраиваем интервал раз в 60 секунд
+    await updateOnlineMonitor();
+    setInterval(updateOnlineMonitor, 60000);
 });
 
 
@@ -171,18 +262,16 @@ client.on(Events.MessageCreate, async (msg) => {
         // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-            if (!att) return; // Игнорируем сообщения без картинок
+            if (!att) return;
 
             const hasPermission = config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
-            if (!hasPermission) return; // Игнорируем, если пишет не админ
+            if (!hasPermission) return;
 
-            // Ищем исходный эмбед заявки в истории канала, чтобы вытащить данные кандидата
             const channelMessages = await msg.channel.messages.fetch({ limit: 50 });
             const appMessage = channelMessages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
             
             let candidateText = "Не удалось определить";
             if (appMessage) {
-                // Ищем упоминание пользователя или ID в полях эмбеда
                 const description = appMessage.embeds[0].description || "";
                 const userMatch = description.match(/<@(\d+)>/);
                 if (userMatch) candidateText = `<@${userMatch[1]}>`;
@@ -202,9 +291,11 @@ client.on(Events.MessageCreate, async (msg) => {
                 await auditChannel.send({ embeds: [auditEmbed], files: [file] });
             }
 
-            // Уведомляем и удаляем тикет через 3 секунды
             await msg.channel.send("✅ Отчёт успешно зафиксирован в аудите! Тикет удаляется...");
             setTimeout(() => msg.channel.delete().catch(() => null), 3000);
+            
+            // Сразу триггерим обновление мониторинга ролей, так как состав изменился
+            setTimeout(updateOnlineMonitor, 4000);
             return;
         }
 
