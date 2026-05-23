@@ -28,11 +28,11 @@ const {
 
 
 // =====================================================
-// 🌐 KEEP ALIVE
+// 🌐 KEEP ALIVE (RENDER)
 // =====================================================
 const app = express();
 app.get("/", (_, res) => res.send("Bot Alive"));
-app.listen(process.env.PORT || 3000, () => console.log("[WEB] SERVER STARTED"));
+app.listen(process.env.PORT || 3000);
 
 
 // =====================================================
@@ -62,7 +62,6 @@ const SERVERS = {
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417"
         },
-
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
@@ -75,7 +74,7 @@ const SERVERS = {
 
 
 // =====================================================
-// 💾 DB
+// 💾 DATABASE
 // =====================================================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -106,49 +105,56 @@ function lockMessage(id) {
 
 
 // =====================================================
-// READY (AUTO PANEL)
+// READY
 // =====================================================
 client.once(Events.ClientReady, async () => {
 
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
 
     const channel = await client.channels.fetch("1458410655697731730");
+    if (!channel) return;
 
-    if (channel) {
-
-        const embed = new EmbedBuilder()
-            .setTitle("## 🚀 Заявки в семью Darkness ##")
-            .setDescription(
+    const embed = new EmbedBuilder()
+        .setTitle("🚀 Заявки в семью Darkness")
+        .setDescription(
 `Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
 ⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
 
-### 🎓 Academy ###
-• Обучение и развитие
-• Откаты не требуются
+### 🎬 RP-Content состав ###
+• Возможность дальнейшего развития в семье  
+• Откаты стрельбы — **не требуются**
 
-### ⚔️ Capture ###
-• Боевой состав
-• Откаты от 5 минут GG
+### 🔥 Main состав ###
+• Требуются откаты стрельбы от **5 минут GG**  
+или  
+• Откаты с любой МП / капта / массового мероприятия
 
 ━━━━━━━━━━━━━━
 
-⚠️ Перед подачей ознакомьтесь с правилами`
+### ⚠️ Важно ознакомиться перед подачей заявки ###
+
+• Заявки без правил отклоняются моментально.  
+• Мы не принимаем фриков и неадекватов.  
+• Заявки рассматриваются по очереди.  
+• КД на повтор — 2 дня.
+
+**📌 Discord должен быть открыт.**`
+        )
+        .setColor("#2b2d31")
+        .setFooter({ text: "Darkness Family Recruitment System" });
+
+    const menu = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId("apply_menu")
+            .setPlaceholder("Выберите тип заявки")
+            .addOptions(
+                { label: "Academy", value: "academy", emoji: "🎓" },
+                { label: "Capture", value: "capture", emoji: "⚔️" }
             )
-            .setColor("#2b2d31");
+    );
 
-        const menu = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId("apply_menu")
-                .setPlaceholder("Выберите тип заявки")
-                .addOptions(
-                    { label: "Academy", value: "academy", emoji: "🎓" },
-                    { label: "Capture", value: "capture", emoji: "⚔️" }
-                )
-        );
-
-        await channel.send({ embeds: [embed], components: [menu] });
-    }
+    await channel.send({ embeds: [embed], components: [menu] });
 });
 
 
@@ -183,8 +189,8 @@ client.on(Events.MessageCreate, async (msg) => {
         .setColor("Blue");
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`accept_${msg.author.id}`).setLabel("✔").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`reject_${msg.author.id}`).setLabel("✖").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`accept_${msg.author.id}`).setStyle(ButtonStyle.Success).setLabel("✔"),
+        new ButtonBuilder().setCustomId(`reject_${msg.author.id}`).setStyle(ButtonStyle.Danger).setLabel("✖")
     );
 
     await audit.send({ embeds: [embed], files: [file], components: [row] });
@@ -212,7 +218,7 @@ client.on(Events.InteractionCreate, async (i) => {
         await channel.send({
             embeds: [
                 new EmbedBuilder()
-                    .setTitle("🚀 Darkness Recruitment System")
+                    .setTitle("🚀 Заявки в семью Darkness")
                     .setDescription("Выберите тип заявки ниже")
                     .setColor("#2b2d31")
             ],
@@ -233,7 +239,7 @@ client.on(Events.InteractionCreate, async (i) => {
     }
 
     // =================================================
-    // MENU
+    // MENU -> MODAL
     // =================================================
     if (i.isStringSelectMenu() && i.customId === "apply_menu") {
 
@@ -265,7 +271,7 @@ client.on(Events.InteractionCreate, async (i) => {
     }
 
     // =================================================
-    // MODAL
+    // MODAL SUBMIT
     // =================================================
     if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
 
@@ -294,7 +300,7 @@ client.on(Events.InteractionCreate, async (i) => {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle(`📨 ${type.toUpperCase()}`)
+            .setTitle(`📨 ${type.toUpperCase()} ЗАЯВКА`)
             .setDescription(
 `👤 <@${i.user.id}>
 
@@ -303,7 +309,7 @@ ${data.q2}
 ${data.q3}
 ${data.q4}`
             )
-            .setColor("Blue");
+            .setColor("#2b2d31");
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("✔").setStyle(ButtonStyle.Success),
@@ -326,12 +332,8 @@ ${data.q4}`
         const data = applications.get(userId);
         if (!data) return;
 
-        if (!i.member.roles.cache.some(r => config.ALLOWED_ROLES.includes(r.id)))
-            return;
+        const audit = await i.guild.channels.fetch(config.CHANNELS.AUDIT_APP);
 
-        const audit = await client.channels.fetch(config.CHANNELS.AUDIT_APP);
-
-        // ACCEPT
         if (i.customId.startsWith("app_accept")) {
 
             const member = await i.guild.members.fetch(userId);
@@ -354,7 +356,6 @@ ${data.q4}`
             return i.channel.delete().catch(() => {});
         }
 
-        // REJECT
         if (i.customId.startsWith("app_reject")) {
 
             await audit.send({
@@ -369,12 +370,10 @@ ${data.q4}`
             return i.channel.delete().catch(() => {});
         }
 
-        // REVIEW
         if (i.customId.startsWith("app_review")) {
-            return i.reply({ content: `👀 На рассмотрении` });
+            return i.reply({ content: "👀 На рассмотрении", ephemeral: true });
         }
 
-        // CALL
         if (i.customId.startsWith("app_call")) {
 
             const menu = new ActionRowBuilder().addComponents(
@@ -388,7 +387,7 @@ ${data.q4}`
     }
 
     // =================================================
-    // VOICE
+    // VOICE SELECT
     // =================================================
     if (i.isChannelSelectMenu() && i.customId.startsWith("voice_select_")) {
 
@@ -405,7 +404,7 @@ ${data.q4}`
             ]
         });
 
-        return i.update({ content: "✔ OK", components: [] });
+        return i.update({ content: "✔ Обзвон назначен", components: [] });
     }
 });
 
