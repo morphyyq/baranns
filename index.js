@@ -28,7 +28,7 @@ const {
 
 
 // =====================================================
-// 🌐 KEEP ALIVE (RENDER)
+// KEEP ALIVE
 // =====================================================
 const app = express();
 app.get("/", (_, res) => res.send("Bot Alive"));
@@ -36,7 +36,7 @@ app.listen(process.env.PORT || 3000);
 
 
 // =====================================================
-// 🤖 CLIENT
+// CLIENT
 // =====================================================
 const client = new Client({
     intents: [
@@ -50,7 +50,7 @@ const client = new Client({
 
 
 // =====================================================
-// 📌 CONFIG
+// CONFIG
 // =====================================================
 const SERVERS = {
     "1458190222042075251": {
@@ -74,7 +74,7 @@ const SERVERS = {
 
 
 // =====================================================
-// 💾 DATABASE
+// DB
 // =====================================================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -122,27 +122,33 @@ client.once(Events.ClientReady, async () => {
 ⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
 
 ### 🎬 RP-Content состав ###
-• Возможность дальнейшего развития в семье  
+• Возможность дальнейшего развития в семье
 • Откаты стрельбы — **не требуются**
 
 ### 🔥 Main состав ###
-• Требуются откаты стрельбы от **5 минут GG**  
-или  
-• Откаты с любой МП / капта / массового мероприятия
+• Требуются откаты стрельбы от **5 минут GG**
+или
+• Откаты с любой МП/капта/массового мероприятия
 
 ━━━━━━━━━━━━━━
 
 ### ⚠️ Важно ознакомиться перед подачей заявки ###
 
-• Заявки без правил отклоняются моментально.  
-• Мы не принимаем фриков и неадекватов.  
-• Заявки рассматриваются по очереди.  
-• КД на повтор — 2 дня.
+• Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
 
-**📌 Discord должен быть открыт.**`
+• Мы не принимаем детей, фриков и неадекватных людей.
+
+• Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
+
+• У нас нет отдельных мест только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
+
+• Если заявка была отклонена — это окончательное решение.
+
+• КД на повторную подачу заявки — **2 дня**.
+
+**📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.**`
         )
-        .setColor("#2b2d31")
-        .setFooter({ text: "Darkness Family Recruitment System" });
+        .setColor("#2b2d31");
 
     const menu = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -208,9 +214,7 @@ client.on(Events.InteractionCreate, async (i) => {
     const config = SERVERS[i.guild.id];
     if (!config) return;
 
-    // =================================================
-    // /PANEL
-    // =================================================
+    // PANEL
     if (i.isChatInputCommand() && i.commandName === "panel") {
 
         const channel = await client.channels.fetch(config.CHANNELS.PANEL);
@@ -238,9 +242,7 @@ client.on(Events.InteractionCreate, async (i) => {
         return i.reply({ content: "✅ Панель отправлена", ephemeral: true });
     }
 
-    // =================================================
-    // MENU -> MODAL
-    // =================================================
+    // MENU
     if (i.isStringSelectMenu() && i.customId === "apply_menu") {
 
         const type = i.values[0];
@@ -251,9 +253,11 @@ client.on(Events.InteractionCreate, async (i) => {
 
         const fields = [
             ["q1", "Ник | Имя | Статик | Возраст"],
-            ["q2", "Онлайн"],
-            ["q3", "Опыт / семьи"],
-            ["q4", type === "academy" ? "Как узнали?" : "Откаты"]
+            ["q2", "Средний онлайн в день"],
+            ["q3", "В каких семьях были и почему ушли?"],
+            ["q4", type === "academy"
+                ? "Как узнали о нас?"
+                : "Предоставьте свои откаты (GG / МП / капт)"]
         ];
 
         modal.addComponents(
@@ -262,7 +266,10 @@ client.on(Events.InteractionCreate, async (i) => {
                     new TextInputBuilder()
                         .setCustomId(f[0])
                         .setLabel(f[1])
-                        .setStyle(f[0] === "q3" || f[0] === "q4" ? TextInputStyle.Paragraph : TextInputStyle.Short)
+                        .setStyle(f[0] === "q3" || f[0] === "q4"
+                            ? TextInputStyle.Paragraph
+                            : TextInputStyle.Short
+                        )
                 )
             )
         );
@@ -270,9 +277,7 @@ client.on(Events.InteractionCreate, async (i) => {
         return i.showModal(modal);
     }
 
-    // =================================================
-    // MODAL SUBMIT
-    // =================================================
+    // MODAL
     if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
 
         const type = i.customId.replace("apply_modal_", "");
@@ -302,114 +307,36 @@ client.on(Events.InteractionCreate, async (i) => {
         const embed = new EmbedBuilder()
             .setTitle(`📨 ${type.toUpperCase()} ЗАЯВКА`)
             .setDescription(
-`👤 <@${i.user.id}>
-
+`ВАШ СТАТИЧЕСКИЙ ID:
 ${data.q1}
+
+СРЕДНИЙ ОНЛАЙН:
 ${data.q2}
+
+ОПЫТ:
 ${data.q3}
-${data.q4}`
+
+ДОПОЛНИТЕЛЬНО:
+${data.q4}
+
+Пользователь: <@${i.user.id}>
+Username: ${i.user.tag}`
             )
             .setColor("#2b2d31");
 
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("✔").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("👀").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("📞").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("✖").setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Взять на рассмотрение").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
         );
 
         await channel.send({ embeds: [embed], components: [row] });
 
         return i.reply({ content: "✅ Заявка отправлена", ephemeral: true });
     }
-
-    // =================================================
-    // BUTTONS
-    // =================================================
-    if (i.isButton()) {
-
-        const [, , userId] = i.customId.split("_");
-        const data = applications.get(userId);
-        if (!data) return;
-
-        const audit = await i.guild.channels.fetch(config.CHANNELS.AUDIT_APP);
-
-        if (i.customId.startsWith("app_accept")) {
-
-            const member = await i.guild.members.fetch(userId);
-
-            const roles = data.type === "academy"
-                ? ["1458485405769797848", "1458410756453306490"]
-                : ["1458410756453306490", "1475114013611528274", "1475515378783223933"];
-
-            await member.roles.add(roles);
-
-            await audit.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle("ПРИНЯТ")
-                        .setColor("Green")
-                        .setDescription(`<@${userId}>`)
-                ]
-            });
-
-            return i.channel.delete().catch(() => {});
-        }
-
-        if (i.customId.startsWith("app_reject")) {
-
-            await audit.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle("ОТКЛОНЕН")
-                        .setColor("Red")
-                        .setDescription(`<@${userId}>`)
-                ]
-            });
-
-            return i.channel.delete().catch(() => {});
-        }
-
-        if (i.customId.startsWith("app_review")) {
-            return i.reply({ content: "👀 На рассмотрении", ephemeral: true });
-        }
-
-        if (i.customId.startsWith("app_call")) {
-
-            const menu = new ActionRowBuilder().addComponents(
-                new ChannelSelectMenuBuilder()
-                    .setCustomId(`voice_select_${userId}`)
-                    .setChannelTypes(ChannelType.GuildVoice)
-            );
-
-            return i.reply({ components: [menu], ephemeral: true });
-        }
-    }
-
-    // =================================================
-    // VOICE SELECT
-    // =================================================
-    if (i.isChannelSelectMenu() && i.customId.startsWith("voice_select_")) {
-
-        const userId = i.customId.split("_")[2];
-        const voice = await i.guild.channels.fetch(i.values[0]);
-
-        const audit = await i.guild.channels.fetch(config.CHANNELS.AUDIT_APP);
-
-        await audit.send({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle("📞 ОБЗВОН")
-                    .setDescription(`<@${userId}> → ${voice}`)
-            ]
-        });
-
-        return i.update({ content: "✔ Обзвон назначен", components: [] });
-    }
 });
 
 
-// =====================================================
 // LOGIN
-// =====================================================
 client.login(process.env.TOKEN);
