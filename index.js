@@ -138,7 +138,7 @@ client.on('interactionCreate', async (i) => {
 
                 // ПРОВЕРКА НАСТРОЕК КОНФИГУРАЦИИ
                 if (config.CHANNELS.CATEGORY === "ID_КАТЕГОРИИ_ДЛЯ_ТИКЕТОВ" || isNaN(config.CHANNELS.CATEGORY)) {
-                    return await i.editReply({ content: "❌ **Ошибка конфигурации:** Вы забыли указать реальный ID категории для тикетов в начале файла `index.js` (строка 25)." });
+                    return await i.editReply({ content: "❌ **Ошибка конфигурации:** Вы забыли указать реальный ID категории для тикетов в начале файла `index.js`." });
                 }
 
                 const type = i.customId.replace("apply_modal_", "");
@@ -178,6 +178,7 @@ client.on('interactionCreate', async (i) => {
                     ]
                 });
 
+                // ✅ ИСПРАВЛЕНО: добавлена недостающая обёртка в бэктики
                 const rolesPing = config.ALLOWED_ROLES.filter(roleId => !isNaN(roleId) && roleId.length > 5).map(r => `<@&${r}>`).join(" ");
                 const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
@@ -247,7 +248,7 @@ client.on('interactionCreate', async (i) => {
                     content: `✅ **Заявка успешно одобрена!** Отчёт со скрином успешно зафиксирован.` 
                 }).catch(() => null);
 
-                // Опционально: отправка сообщения игроку в ЛС о принятии
+                // Отправка сообщения игроку в ЛС о принятии
                 const targetUser = await i.guild.members.fetch(targetUserId).catch(() => null);
                 if (targetUser) {
                     await targetUser.send(`🎉 Поздравляем! Ваша заявка в семью **Darkness** была одобрена!`).catch(() => null);
@@ -255,4 +256,63 @@ client.on('interactionCreate', async (i) => {
             });
 
             collector.on('end', async (collected) => {
-                if
+                if (collected.size === 0) {
+                    await i.editReply({ 
+                        content: `❌ **Действие отменено.** Время ожидания скриншота (2 минуты) истекло.` 
+                    }).catch(() => null);
+                }
+            });
+            return;
+        }
+
+        // --- 4.5. КНОПКА "ВЗЯТЬ НА РАССМОТРЕНИЕ" ---
+        if (i.isButton() && i.customId.startsWith("app_review_")) {
+            await i.reply({ content: `👀 Администратор <@${i.user.id}> взял заявку на рассмотрение.` }).catch(() => null);
+            return;
+        }
+
+        // --- 4.6. КНОПКА "ВЫЗВАТЬ НА ОБЗВОН" ---
+        if (i.isButton() && i.customId.startsWith("app_call_")) {
+            const targetUserId = i.customId.replace("app_call_", "");
+
+            const selectMenu = new ChannelSelectMenuBuilder()
+                .setCustomId(`call_voice_${targetUserId}`)
+                .setPlaceholder('Выберите голосовой канал для обзвона')
+                .addChannelTypes(ChannelType.GuildVoice);
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+
+            await i.reply({ content: 'Выберите комнату для проведения обзвона:', components: [row], ephemeral: true }).catch(() => null);
+            return;
+        }
+
+        // --- 4.7. ВЫБОР ГОЛОСОВОГО КАНАЛА ИЗ МЕНЮ ---
+        if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
+            const targetUserId = i.customId.replace("call_voice_", "");
+            const voiceChannelId = i.values[0];
+
+            await i.reply({ 
+                content: `📞 Кандидат <@${targetUserId}> вызван на обзвон в канал <#${voiceChannelId}> Администратором <@${i.user.id}>.` 
+            }).catch(() => null);
+            return;
+        }
+
+        // --- 4.8. КНОПКА "ОТКЛОНИТЬ" ---
+        if (i.isButton() && i.customId.startsWith("app_reject_")) {
+            await i.reply({ content: `❌ Заявка была отклонена администратором <@${i.user.id}>. Канал закроется через 5 секунд...` }).catch(() => null);
+            
+            setTimeout(() => {
+                i.channel.delete().catch(() => null);
+            }, 5000);
+            return;
+        }
+
+    } catch (error) {
+        console.error(`[INTERACTION ERROR] [${INSTANCE_ID}]`, error);
+    }
+});
+
+process.on('unhandledRejection', error => console.error('[GLOBAL UNHANDLED REJECTION]:', error));
+process.on('uncaughtException', error => console.error('[GLOBAL UNCAUGHT EXCEPTION]:', error));
+
+client.login(config.TOKEN);
