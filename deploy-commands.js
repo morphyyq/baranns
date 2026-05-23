@@ -1,35 +1,82 @@
 require('dotenv').config();
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
+const {
+    REST,
+    Routes,
+    SlashCommandBuilder
+} = require('discord.js');
+
+
+// =====================================================
+// SLASH COMMANDS
+// =====================================================
 const commands = [
+
+    // =================================================
+    // /all
+    // =================================================
     new SlashCommandBuilder()
         .setName('all')
         .setDescription('Отправить сообщение всем в ЛС')
         .addStringOption(option =>
-            option.setName('text')
+            option
+                .setName('text')
                 .setDescription('Сообщение')
                 .setRequired(true)
         ),
 
-    // ✅ ДОБАВИЛИ PANEL
+
+    // =================================================
+    // /panel
+    // =================================================
     new SlashCommandBuilder()
         .setName('panel')
         .setDescription('Отправить панель заявок в семью')
+
 ].map(cmd => cmd.toJSON());
 
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
+// =====================================================
+// REST
+// =====================================================
+const rest = new REST({
+    version: '10'
+}).setToken(process.env.TOKEN);
+
+
+// =====================================================
+// DEPLOY
+// =====================================================
 (async () => {
+
     try {
+
         console.log('⏳ Registering slash commands...');
 
+
+        // =============================================
+        // GLOBAL COMMANDS
+        // =============================================
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands }
+
+            Routes.applicationCommands(
+                process.env.CLIENT_ID
+            ),
+
+            {
+                body: commands
+            }
         );
 
+
         console.log('✅ Slash commands registered');
-    } catch (err) {
+
+    }
+
+    catch (err) {
+
+        console.log('❌ DEPLOY ERROR');
         console.log(err);
     }
+
 })();
