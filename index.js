@@ -19,7 +19,11 @@ const {
     TextInputBuilder,
     TextInputStyle,
     StringSelectMenuBuilder,
-    ChannelType
+    ChannelSelectMenuBuilder,
+    ChannelType,
+    REST,
+    Routes,
+    SlashCommandBuilder
 } = require("discord.js");
 
 
@@ -55,11 +59,9 @@ const SERVERS = {
             AUDIT: "1500501911848095906",
             SALARY: "1500515048970522685",
             PANEL: "1458410655697731730",
-            CATEGORY: "1458410646956806196"
+            CATEGORY: "1458410646956806196",
+            AUDIT_APP: "1464575195418460417"
         },
-
-        ROLE_TARGET: "1458410756453306490",
-
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
@@ -72,7 +74,7 @@ const SERVERS = {
 
 
 // =====================================================
-// DATABASE
+// DB
 // =====================================================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -89,12 +91,12 @@ let salary = loadDB();
 
 
 // =====================================================
-// MEMORY LOCK
+// MEMORY
 // =====================================================
 const processed = new Set();
 const applications = new Map();
 
-function lock(id) {
+function lockMessage(id) {
     if (processed.has(id)) return true;
     processed.add(id);
     setTimeout(() => processed.delete(id), 120000);
@@ -103,34 +105,35 @@ function lock(id) {
 
 
 // =====================================================
-// PANEL (MAJESTIC STYLE)
+// READY
 // =====================================================
 client.once(Events.ClientReady, async () => {
 
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
 
-    const channel = await client.channels.fetch(SERVERS["1458190222042075251"].CHANNELS.PANEL);
+    const channel = await client.channels.fetch("1458410655697731730");
     if (!channel) return;
 
     const embed = new EmbedBuilder()
         .setTitle("🚀 Заявки в семью Darkness")
-        .setDescription(`🚀 Заявки в семью Darkness
-Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
+        .setDescription(
+`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
-⏳ Время рассмотрения заявки: от 1 до 4 дней.
+⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
 
-🎬 RP-Content состав
+### 🎬 RP-Content состав ###
 • Возможность дальнейшего развития в семье
-• Откаты стрельбы — не требуются
+• Откаты стрельбы — **не требуются**
 
-🔥 Main состав
-• Требуются откаты стрельбы от 5 минут GG
+### 🔥 Main состав ###
+• Требуются откаты стрельбы от **5 минут GG**
 или
 • Откаты с любой МП/капта/массового мероприятия
 
 ━━━━━━━━━━━━━━
 
-⚠️ Важно ознакомиться перед подачей заявки
+### ⚠️ Важно ознакомиться перед подачей заявки ###
+
 • Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
 
 • Мы не принимаем детей, фриков и неадекватных людей.
@@ -141,24 +144,23 @@ client.once(Events.ClientReady, async () => {
 
 • Если заявка была отклонена — это окончательное решение.
 
-• КД на повторную подачу заявки — 2 дня.
+• КД на повторную подачу заявки — **2 дня**.
 
-📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.`)
+**📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.**`
+        )
         .setColor("#2b2d31");
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId("apply_academy")
-            .setLabel("🎓 Academy")
-            .setStyle(ButtonStyle.Primary),
-
-        new ButtonBuilder()
-            .setCustomId("apply_capture")
-            .setLabel("⚔️ Capture")
-            .setStyle(ButtonStyle.Danger)
+    const menu = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId("apply_menu")
+            .setPlaceholder("Выберите тип заявки")
+            .addOptions(
+                { label: "Academy", value: "academy", emoji: "🎓" },
+                { label: "Capture", value: "capture", emoji: "⚔️" }
+            )
     );
 
-    await channel.send({ embeds: [embed], components: [row] });
+    await channel.send({ embeds: [embed], components: [menu] });
 });
 
 
@@ -176,34 +178,30 @@ client.on(Events.MessageCreate, async (msg) => {
         return msg.reply({ content: `💰 Баланс: ${salary[msg.author.id] || 0}` });
     }
 
-    if (msg.channel.id === config.CHANNELS.SCREEN) {
+    if (msg.channel.id !== config.CHANNELS.SCREEN) return;
+    if (lockMessage(msg.id)) return;
 
-        if (lock(msg.id)) return;
+    const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
+    if (!att) return;
 
-        const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-        if (!att) return;
+    const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
 
-        const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
+    const file = new AttachmentBuilder(att.url, { name: att.name || "img.png" });
 
-        const file = new AttachmentBuilder(att.url, {
-            name: att.name || "screen.png"
-        });
+    const embed = new EmbedBuilder()
+        .setTitle("📸 Отчёт")
+        .setDescription(`<@${msg.author.id}>`)
+        .setImage(`attachment://${file.name}`)
+        .setColor("Blue");
 
-        const embed = new EmbedBuilder()
-            .setTitle("📸 РЕКРУТ ОТЧЁТ")
-            .setDescription(`👤 <@${msg.author.id}>`)
-            .setImage(`attachment://${file.name}`)
-            .setColor("Blue");
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`accept_${msg.author.id}`).setStyle(ButtonStyle.Success).setLabel("✔"),
+        new ButtonBuilder().setCustomId(`reject_${msg.author.id}`).setStyle(ButtonStyle.Danger).setLabel("✖")
+    );
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`accept_${msg.author.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`reject_${msg.author.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
-        );
+    await audit.send({ embeds: [embed], files: [file], components: [row] });
 
-        await audit.send({ embeds: [embed], files: [file], components: [row] });
-
-        setTimeout(() => msg.delete().catch(() => {}), 10000);
-    }
+    setTimeout(() => msg.delete().catch(() => {}), 10000);
 });
 
 
@@ -216,32 +214,62 @@ client.on(Events.InteractionCreate, async (i) => {
     const config = SERVERS[i.guild.id];
     if (!config) return;
 
-    // =========================
-    // BUTTON PANEL -> MODAL
-    // =========================
-    if (i.isButton() && i.customId.startsWith("apply_")) {
+    // PANEL
+    if (i.isChatInputCommand() && i.commandName === "panel") {
 
-        const type = i.customId.replace("apply_", "");
+        const channel = await client.channels.fetch(config.CHANNELS.PANEL);
+
+        await channel.send({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle("🚀 Заявки в семью Darkness")
+                    .setDescription("Выберите тип заявки ниже")
+                    .setColor("#2b2d31")
+            ],
+            components: [
+                new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("apply_menu")
+                        .setPlaceholder("Выберите заявку")
+                        .addOptions(
+                            { label: "Academy", value: "academy", emoji: "🎓" },
+                            { label: "Capture", value: "capture", emoji: "⚔️" }
+                        )
+                )
+            ]
+        });
+
+        return i.reply({ content: "✅ Панель отправлена", ephemeral: true });
+    }
+
+    // MENU
+    if (i.isStringSelectMenu() && i.customId === "apply_menu") {
+
+        const type = i.values[0];
 
         const modal = new ModalBuilder()
-            .setCustomId(`modal_${type}`)
-            .setTitle(type === "academy" ? "Academy Application" : "Capture Application");
+            .setCustomId(`apply_modal_${type}`)
+            .setTitle(type.toUpperCase());
 
         const fields = [
-            { id: "q1", label: "Ник | Имя | Статик | Возраст", placeholder: "Hugo | Женя | 21074 | 20" },
-            { id: "q2", label: "Средний онлайн в день", placeholder: "4-6 часов" },
-            { id: "q3", label: "Семьи и причины ухода", placeholder: "Перечислите" },
-            { id: "q4", label: type === "academy" ? "Как узнали о нас?" : "Откаты", placeholder: "..." }
+            ["q1", "Ник | Имя | Статик | Возраст"],
+            ["q2", "Средний онлайн в день"],
+            ["q3", "В каких семьях были и почему ушли?"],
+            ["q4", type === "academy"
+                ? "Как узнали о нас?"
+                : "Предоставьте свои откаты (GG / МП / капт)"]
         ];
 
         modal.addComponents(
             ...fields.map(f =>
                 new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
-                        .setCustomId(f.id)
-                        .setLabel(f.label)
-                        .setPlaceholder(f.placeholder)
-                        .setStyle(TextInputStyle.Paragraph)
+                        .setCustomId(f[0])
+                        .setLabel(f[1])
+                        .setStyle(f[0] === "q3" || f[0] === "q4"
+                            ? TextInputStyle.Paragraph
+                            : TextInputStyle.Short
+                        )
                 )
             )
         );
@@ -249,21 +277,22 @@ client.on(Events.InteractionCreate, async (i) => {
         return i.showModal(modal);
     }
 
-    // =========================
-    // MODAL SUBMIT
-    // =========================
-    if (i.isModalSubmit() && i.customId.startsWith("modal_")) {
+    // MODAL
+    if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
 
-        const type = i.customId.replace("modal_", "");
+        const type = i.customId.replace("apply_modal_", "");
         const nick = i.fields.getTextInputValue("q1");
 
         const data = {
+            type,
             q1: i.fields.getTextInputValue("q1"),
             q2: i.fields.getTextInputValue("q2"),
             q3: i.fields.getTextInputValue("q3"),
             q4: i.fields.getTextInputValue("q4"),
-            user: i.user
+            userId: i.user.id
         };
+
+        applications.set(i.user.id, data);
 
         const channel = await i.guild.channels.create({
             name: `app-${nick.replace(/\s/g, "-")}`,
@@ -276,18 +305,30 @@ client.on(Events.InteractionCreate, async (i) => {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle(`📨 ${type.toUpperCase()} APPLICATION`)
-            .setDescription(`👤 <@${i.user.id}>
-
+            .setTitle(`📨 ${type.toUpperCase()} ЗАЯВКА`)
+            .setDescription(
+`ВАШ СТАТИЧЕСКИЙ ID:
 ${data.q1}
+
+СРЕДНИЙ ОНЛАЙН:
 ${data.q2}
+
+ОПЫТ:
 ${data.q3}
-${data.q4}`)
+
+ДОПОЛНИТЕЛЬНО:
+${data.q4}
+
+Пользователь: <@${i.user.id}>
+Username: ${i.user.tag}`
+            )
             .setColor("#2b2d31");
 
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`acc_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`rej_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Взять на рассмотрение").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
         );
 
         await channel.send({ embeds: [embed], components: [row] });
@@ -297,7 +338,5 @@ ${data.q4}`)
 });
 
 
-// =====================================================
 // LOGIN
-// =====================================================
 client.login(process.env.TOKEN);
