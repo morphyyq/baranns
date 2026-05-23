@@ -449,7 +449,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const channel = await i.guild.channels.create({
 
-                name: `заявление-${nick.split("|")[0].trim().toLowerCase()}-${i.user.username}`,
+                name: `заявление-${nick.split("|")[0].trim().toLowerCase()}`,
 
                 type: ChannelType.GuildText,
 
@@ -502,6 +502,7 @@ ${data.q3}
 ${data.q4}
 
 Пользователь: <@${i.user.id}>
+Username: ${i.user.tag}`
                 )
                 .setColor("#2b2d31");
 
@@ -534,7 +535,7 @@ ${data.q4}
             });
 
             return i.reply({
-                content: `🚀 Ваша заявка успешно создана!\n📨 Перейдите сюда: <#${channel.id}>`,
+                content: "✅ Заявка отправлена",
                 ephemeral: true
             });
         }
