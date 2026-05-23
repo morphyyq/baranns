@@ -18,15 +18,19 @@ const {
 
 
 // =====================
-// 🌐 KEEP ALIVE (Render)
+// 🌐 KEEP ALIVE
 // =====================
 const app = express();
-app.get("/", (_, res) => res.send("Bot is alive"));
+
+app.get("/", (_, res) => {
+    res.send("Bot Alive");
+});
+
 app.listen(process.env.PORT || 3000);
 
 
 // =====================
-// 🤖 BOT
+// 🤖 CLIENT
 // =====================
 const client = new Client({
     intents: [
@@ -40,7 +44,7 @@ const client = new Client({
 
 
 // =====================
-// 📌 CHANNELS (ТВОИ НОВЫЕ)
+// 📌 CHANNELS
 // =====================
 const CHANNELS = {
     SCREEN: "1499706104345792512", // 📸 скрины
@@ -48,6 +52,10 @@ const CHANNELS = {
     SALARY: "1500515048970522685"  // 💰 зарплата
 };
 
+
+// =====================
+// 📌 ROLES
+// =====================
 const ROLE_TARGET = "1458410756453306490";
 
 const ALLOWED_ROLES = [
@@ -78,17 +86,37 @@ let salary = loadDB();
 
 
 // =====================
-// 🧠 ANTI DUPLICATE SYSTEM
+// 🧠 ANTI DUPLICATE
 // =====================
 const processed = new Map();
 
 function lock(id) {
     if (processed.has(id)) return true;
+
     processed.set(id, Date.now());
 
-    setTimeout(() => processed.delete(id), 60000);
+    setTimeout(() => {
+        processed.delete(id);
+    }, 60000);
+
     return false;
 }
+
+
+// =====================
+// 🛡 ANTI CRASH
+// =====================
+process.on("unhandledRejection", (err) => {
+    console.log("Unhandled Rejection:", err);
+});
+
+process.on("uncaughtException", (err) => {
+    console.log("Uncaught Exception:", err);
+});
+
+process.on("uncaughtExceptionMonitor", (err) => {
+    console.log("Monitor:", err);
+});
 
 
 // =====================
@@ -96,12 +124,12 @@ function lock(id) {
 // =====================
 client.once(Events.ClientReady, () => {
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
-    console.log("📸 SCREEN CHANNEL:", CHANNELS.SCREEN);
+    console.log(`[SCREEN] ${CHANNELS.SCREEN}`);
 });
 
 
 // =====================
-// MESSAGE CREATE (SCREENS)
+// 📸 SCREEN SYSTEM
 // =====================
 client.on(Events.MessageCreate, async (msg) => {
 
@@ -109,28 +137,34 @@ client.on(Events.MessageCreate, async (msg) => {
 
     // 💰 BALANCE
     if (msg.content === "/balance") {
-        return msg.reply(`Баланс: ${salary[msg.author.id] || 0}`);
+        return msg.reply(`💰 Баланс: ${salary[msg.author.id] || 0}`);
     }
 
-    // 📸 SCREEN SYSTEM
+    // 📸 ONLY SCREEN CHANNEL
     if (msg.channel.id !== CHANNELS.SCREEN) return;
 
+    // 🧠 ANTI DUPLICATE
     if (lock(msg.id)) return;
 
     const att = msg.attachments?.first();
+
     if (!att?.url) return;
 
+    // ✅ ONLY IMAGES
+    if (!att.contentType?.startsWith("image")) return;
+
     try {
+
         const audit = await client.channels.fetch(CHANNELS.AUDIT);
 
         const embed = new EmbedBuilder()
             .setTitle("📸 Новый скриншот")
-            .setDescription(`👤 От: <@${msg.author.id}>`)
-            .setImage(att.url)
+            .setDescription(`👤 Отправил: <@${msg.author.id}>`)
             .setColor("Blue")
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
+
             new ButtonBuilder()
                 .setCustomId(`accept_${msg.author.id}`)
                 .setLabel("Принять")
@@ -142,12 +176,17 @@ client.on(Events.MessageCreate, async (msg) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
+        // ✅ FILE SEND FIX
         await audit.send({
             embeds: [embed],
+            files: [att.url],
             components: [row]
         });
 
-        setTimeout(() => msg.delete().catch(() => {}), 1500);
+        // 🧹 DELETE ORIGINAL
+        setTimeout(() => {
+            msg.delete().catch(() => {});
+        }, 1500);
 
     } catch (e) {
         console.log("SCREEN ERROR:", e.message);
@@ -156,28 +195,37 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
 // =====================
-// INTERACTIONS
+// ⚡ INTERACTIONS
 // =====================
 client.on(Events.InteractionCreate, async (i) => {
 
     // =====================
-    // /all
+    // 📢 /all
     // =====================
     if (i.isChatInputCommand() && i.commandName === "all") {
 
-        const allowed = i.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id));
+        const allowed = i.member.roles.cache.some(r =>
+            ALLOWED_ROLES.includes(r.id)
+        );
+
         if (!allowed) {
-            return i.reply({ content: "❌ Нет прав", ephemeral: true });
+            return i.reply({
+                content: "❌ Нет прав",
+                ephemeral: true
+            });
         }
 
         const text = i.options.getString("text");
 
-        await i.deferReply({ ephemeral: true });
+        await i.deferReply({
+            ephemeral: true
+        });
 
         const members = await i.guild.members.fetch();
 
         const users = [...members.values()].filter(m =>
-            !m.user.bot && m.roles.cache.has(ROLE_TARGET)
+            !m.user.bot &&
+            m.roles.cache.has(ROLE_TARGET)
         );
 
         const embed = new EmbedBuilder()
@@ -193,37 +241,55 @@ client.on(Events.InteractionCreate, async (i) => {
         const CONCURRENCY = 5;
 
         async function worker() {
+
             while (index < users.length) {
-                const u = users[index++];
+
+                const user = users[index++];
 
                 try {
-                    await u.send({ embeds: [embed] });
+
+                    await user.send({
+                        embeds: [embed]
+                    });
+
                     sent++;
+
                 } catch {
+
                     fail++;
                 }
 
-                await new Promise(r => setTimeout(r, 600));
+                await new Promise(r =>
+                    setTimeout(r, 600)
+                );
             }
         }
 
-        const tasks = Array.from({ length: CONCURRENCY }, worker);
+        const tasks = Array.from(
+            { length: CONCURRENCY },
+            worker
+        );
 
         const progress = setInterval(() => {
-            i.editReply(`📨 ${sent + fail}/${users.length} | OK ${sent} | FAIL ${fail}`)
-                .catch(() => {});
+
+            i.editReply(
+                `📨 ${sent + fail}/${users.length} | ✅ ${sent} | ❌ ${fail}`
+            ).catch(() => {});
+
         }, 3000);
 
         await Promise.all(tasks);
 
         clearInterval(progress);
 
-        return i.editReply(`✅ ГОТОВО\nВсего: ${users.length}\nOK: ${sent}\nFAIL: ${fail}`);
+        return i.editReply(
+            `✅ ГОТОВО\n\n📨 Всего: ${users.length}\n✅ Отправлено: ${sent}\n❌ Ошибки: ${fail}`
+        );
     }
 
 
     // =====================
-    // BUTTONS (ACCEPT / REJECT)
+    // 💰 BUTTONS
     // =====================
     if (!i.isButton()) return;
 
@@ -231,32 +297,51 @@ client.on(Events.InteractionCreate, async (i) => {
 
     const salaryChannel = await client.channels.fetch(CHANNELS.SALARY);
 
+    // =====================
+    // ✅ ACCEPT
+    // =====================
     if (action === "accept") {
 
         salary[id] = (salary[id] || 0) + 10000;
+
         saveDB(salary);
 
         const embed = new EmbedBuilder()
             .setTitle("💰 Зарплата выдана")
-            .setDescription(`👤 <@${id}>`)
+            .setDescription(`👤 Пользователь: <@${id}>`)
             .addFields(
-                { name: "Сумма", value: "+10000", inline: true },
-                { name: "Баланс", value: `${salary[id]}`, inline: true }
+                {
+                    name: "💵 Сумма",
+                    value: "+10000",
+                    inline: true
+                },
+                {
+                    name: "📊 Баланс",
+                    value: `${salary[id]}`,
+                    inline: true
+                }
             )
             .setColor("Green")
             .setTimestamp();
 
         await i.update({
-            content: `💰 +10000 выдано <@${id}>`,
+            content: `✅ Зарплата выдана <@${id}>`,
             components: []
         });
 
-        salaryChannel.send({ embeds: [embed] });
+        await salaryChannel.send({
+            embeds: [embed]
+        });
     }
 
+
+    // =====================
+    // ❌ REJECT
+    // =====================
     if (action === "reject") {
+
         await i.update({
-            content: "❌ Отклонено",
+            content: "❌ Скриншот отклонён",
             components: []
         });
     }
@@ -264,6 +349,6 @@ client.on(Events.InteractionCreate, async (i) => {
 
 
 // =====================
-// LOGIN
+// 🔐 LOGIN
 // =====================
 client.login(process.env.TOKEN);
