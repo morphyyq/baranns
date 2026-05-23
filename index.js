@@ -481,4 +481,67 @@ ${data.q4}`;
                     
                     const isAcademy = i.channel.name.startsWith("academy");
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
-                    await
+                    await targetMember.roles.add(rolesToAdd).catch(() => null);
+
+                    embed.setColor("Green").setTitle("Заявление (Одобрено)");
+                    await i.update({ embeds: [embed], components: [] });
+                    await i.channel.send(`🎉 <@${targetId}> успешно принят! Канал удалится через 15 секунд.`);
+                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
+                    return;
+                }
+
+                if (action === "review") {
+                    embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
+                    await i.update({ embeds: [embed] });
+                    await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
+                    return;
+                }
+
+                if (action === "call") {
+                    const voiceMenu = new ActionRowBuilder().addComponents(
+                        new ChannelSelectMenuBuilder()
+                            .setCustomId(`call_voice_${targetId}`)
+                            .setPlaceholder("Выберите голосовой канал для кандидата")
+                            .addChannelTypes(ChannelType.GuildVoice)
+                    );
+
+                    await i.reply({
+                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
+                        components: [voiceMenu],
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                if (action === "reject") {
+                    embed.setColor("Red").setTitle("Заявление (Отклонено)");
+                    await i.update({ embeds: [embed], components: [] });
+                    await i.channel.send(`❌ Заявка отклонена. Канал будет удален через 15 секунд.`);
+                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
+                    return;
+                }
+            }
+        }
+
+    } catch (e) {
+        console.log(`[INTERACTION ERROR HANDLED] [${INSTANCE_ID}]`, e);
+    }
+});
+
+
+// =====================================================
+// ПРАВИЛЬНОЕ ВЫКЛЮЧЕНИЕ ДЛЯ RENDER (SIGTERM/SIGINT)
+// =====================================================
+const shutdown = () => {
+    console.log(`[BOT] [${INSTANCE_ID}] Получен сигнал выключения. Отключаюсь...`);
+    client.destroy();
+    process.exit(0);
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
+
+// =====================================================
+// LOGIN
+// =====================================================
+client.login(process.env.TOKEN);
