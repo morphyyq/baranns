@@ -501,8 +501,7 @@ ${data.q3}
 : "Откаты"}**
 ${data.q4}
 
-Пользователь: <@${i.user.id}>
-Username: ${i.user.tag}`
+Пользователь: <@${i.user.id}`
                 )
                 .setColor("#2b2d31");
 
