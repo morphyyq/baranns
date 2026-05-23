@@ -261,8 +261,30 @@ client.on(Events.InteractionCreate, async (i) => {
         if (!i.guild) return;
 
         const config = SERVERS[i.guild.id];
-        if (!config) return;
+        if (!config) return;Э
+        
+// =====================================================
+// APPLICATION BUTTONS
+// =====================================================
+if (i.isButton()) {
 
+    const id = i.customId;
+
+    if (
+        id.startsWith("app_accept_") ||
+        id.startsWith("app_reject_") ||
+        id.startsWith("app_review_") ||
+        id.startsWith("app_call_")
+    ) {
+
+        await i.reply({
+            content: `✅ Действие выполнено: ${id}`,
+            ephemeral: true
+        });
+
+        return;
+    }
+}
 
         // =================================================
         // /PANEL
