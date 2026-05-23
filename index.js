@@ -19,6 +19,7 @@ const {
     TextInputBuilder,
     TextInputStyle,
     StringSelectMenuBuilder,
+    ChannelSelectMenuBuilder,
     REST,
     Routes,
     SlashCommandBuilder,
@@ -253,7 +254,7 @@ client.on(Events.InteractionCreate, async (i) => {
 • Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
 • Мы не принимаем детей, фриков и неадекватных людей.
 • Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
-• У нас нет отдельных мест только под капты или MCL — вы вступаете в тему и участвуете во всём контенте.
+• У нас нет отдельных мест только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
 • Если заявка была отклонена — это окончательное решение.
 • КД на повторную подачу заявки — **2 дня**.
 
@@ -266,18 +267,8 @@ client.on(Events.InteractionCreate, async (i) => {
                         .setCustomId("apply_menu")
                         .setPlaceholder("Выберите тип заявки")
                         .addOptions(
-                            {
-                                label: "Academy",
-                                description: "Ник, статик, имя/возраст, онлайн, семья",
-                                value: "academy",
-                                emoji: "🎓"
-                            },
-                            {
-                                label: "Capture",
-                                description: "Ник, статик, имя/возраст, онлайн, семья, откаты",
-                                value: "capture",
-                                emoji: "⚔️"
-                            }
+                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy", emoji: "🎓" },
+                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture", emoji: "⚔️" }
                         )
                 );
 
@@ -286,21 +277,24 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ С ТЕКСТОМ ИЗ СКРИНШОТА)
+        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
                 .setCustomId(`apply_modal_${type}`)
                 .setTitle(type === "academy" ? "Заявка в Academy" : "Заявка в Capture");
 
-            // Точные вопросы со скриншота (максимум 5 по лимиту Discord)
             const fields = [
                 { id: "q1", label: "ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ", placeholder: "21074 | Hugo Darkness", style: TextInputStyle.Short },
                 { id: "q2", label: "ИМЯ И ВОЗРАСТ (В РЕАЛЕ)", placeholder: "Женя | 20", style: TextInputStyle.Short },
                 { id: "q3", label: "ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?", placeholder: "Да, был в...", style: TextInputStyle.Paragraph },
-                { id: "q4", label: "ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?", placeholder: "Увидел на респе / медиа контент...", style: TextInputStyle.Paragraph },
-                { id: "q5", label: "Предоставьте свои откаты", placeholder: type === "academy" ? "Не требуются (можно поставить прочерк)" : "Ссылка на откат с ГГ от 5 минут", style: TextInputStyle.Paragraph }
+                { id: "q4", label: "ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?", placeholder: "Увидел на респе / медиа контент...", style: TextInputStyle.Paragraph }
             ];
+
+            // ИЗМЕНЕНИЕ: Строка с откатом добавляется ТОЛЬКО если это НЕ academy (то есть для capture)
+            if (type !== "academy") {
+                fields.push({ id: "q5", label: "Предоставьте свои откаты", placeholder: "Ссылка на откат с ГГ от 5 минут", style: TextInputStyle.Paragraph });
+            }
 
             modal.addComponents(
                 ...fields.map(f => new ActionRowBuilder().addComponents(
@@ -311,7 +305,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return i.showModal(modal);
         }
 
-        // ОТПРАВКА ЗАЯВКИ И СОЗДАНИЕ ТИКЕТА (ВИЗУАЛ С ТОЧНОСТЬЮ ДО ПИКСЕЛЯ)
+        // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
             const type = i.customId.replace("apply_modal_", "");
             const data = {
@@ -320,15 +314,15 @@ client.on(Events.InteractionCreate, async (i) => {
                 q2: i.fields.getTextInputValue("q2"),
                 q3: i.fields.getTextInputValue("q3"),
                 q4: i.fields.getTextInputValue("q4"),
-                q5: i.fields.getTextInputValue("q5"),
+                q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null, // Безопасное получение для Academy
                 userId: i.user.id
             };
 
             applications.set(i.user.id, data);
 
-            // Создание канала-тикета
+            // ИЗМЕНЕНИЕ: Название канала теперь включает тип (academy-... или capture-...) для точной выдачи ролей позже
             const channel = await i.guild.channels.create({
-                name: `заявление-${i.user.username.toLowerCase()}`,
+                name: `${type}-${i.user.username.toLowerCase()}`,
                 type: ChannelType.GuildText,
                 parent: config.CHANNELS.CATEGORY,
                 permissionOverwrites: [
@@ -338,15 +332,11 @@ client.on(Events.InteractionCreate, async (i) => {
                 ]
             });
 
-            // Формируем текст сверху (Пинги + Предыдущие заявки)
             const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
             const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            // Создаем точную копию эмбеда со скриншота
-            const embed = new EmbedBuilder()
-                .setTitle("Заявление")
-                .setDescription(
-`**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
+            // Сборка текста описания (без строки отката для Academy)
+            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
 ${data.q1}
 
 **ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
@@ -356,15 +346,18 @@ ${data.q2}
 ${data.q3}
 
 **ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
-${data.q4}
+${data.q4}`;
 
-**Предоставьте свои откаты**
-${data.q5}
+            if (type !== "academy") {
+                embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
+            }
 
-**Пользователь**
-<@${i.user.id}>`
-                )
-                .setColor("#1f8b4c") // Цвет боковой линии (зеленоватый/бирюзовый как на скрине)
+            embedDescription += `\n\n**Пользователь**\n<@${i.user.id}>`;
+
+            const embed = new EmbedBuilder()
+                .setTitle("Заявление")
+                .setDescription(embedDescription)
+                .setColor("#1f8b4c")
                 .addFields(
                     { name: "Username", value: i.user.username, inline: true },
                     { name: "ID", value: i.user.id, inline: true }
@@ -373,13 +366,34 @@ ${data.q5}
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Взять на рассмотрение").setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Primary), // Сине-фиолетовый
+                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
             );
 
             await channel.send({ content: topContent, embeds: [embed], components: [row] });
 
             return i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
+        }
+
+        // ОБРАБОТКА ВЫБОРА ВОЙСА (ДЛЯ ОБЗВОНА)
+        if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
+            const targetId = i.customId.replace("call_voice_", "");
+            const voiceChannelId = i.values[0];
+
+            // Находим главное сообщение с эмбедом в текущем тикете, чтобы обновить визуальный статус
+            const messages = await i.channel.messages.fetch({ limit: 20 });
+            const appMessage = messages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
+
+            if (appMessage) {
+                const embed = EmbedBuilder.from(appMessage.embeds[0]);
+                embed.setColor("Orange").setTitle("Заявление (Вызов на обзвон)");
+                await appMessage.edit({ embeds: [embed] });
+            }
+
+            // ИЗМЕНЕНИЕ: Уведомление в тикете с упоминанием выбранного голосового канала
+            await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>! Пожалуйста, зайдите в голосовой канал <#${voiceChannelId}>.`);
+
+            return i.reply({ content: "✅ Голосовой канал успешно отправлен в тикет!", ephemeral: true });
         }
 
         // ОБРАБОТКА КНОПОК
@@ -392,7 +406,7 @@ ${data.q5}
                 return i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
             }
 
-            // Кнопки отчетов
+            // Кнопки отчетов скриншотов
             if (parts[0] === "accept" || parts[0] === "reject") {
                 const action = parts[0];
                 const targetId = parts[1];
@@ -409,7 +423,7 @@ ${data.q5}
                 }
             }
 
-            // Кнопки заявок (app)
+            // Кнопки управления заявками (app)
             if (parts[0] === "app") {
                 const action = parts[1];
                 const targetId = parts[2];
@@ -419,7 +433,7 @@ ${data.q5}
                 if (action === "accept") {
                     if (!targetMember) return i.reply({ content: "❌ Пользователь вышел с сервера.", ephemeral: true });
                     
-                    const isAcademy = i.message.channel.name.includes("academy");
+                    const isAcademy = i.channel.name.startsWith("academy");
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
                     await targetMember.roles.add(rolesToAdd).catch(() => null);
 
@@ -435,10 +449,20 @@ ${data.q5}
                     await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
                 }
 
+                // ИЗМЕНЕНИЕ: Кнопка вызова на обзвон теперь предлагает выбрать голосовой канал
                 if (action === "call") {
-                    embed.setColor("Orange").setTitle("Заявление (Вызов на обзвон)");
-                    await i.update({ embeds: [embed] });
-                    await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>! Ожидайте в голосовом канале.`);
+                    const voiceMenu = new ActionRowBuilder().addComponents(
+                        new ChannelSelectMenuBuilder()
+                            .setCustomId(`call_voice_${targetId}`)
+                            .setPlaceholder("Выберите голосовой канал для кандидата")
+                            .addChannelTypes(ChannelType.GuildVoice)
+                    );
+
+                    return i.reply({
+                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
+                        components: [voiceMenu],
+                        ephemeral: true
+                    });
                 }
 
                 if (action === "reject") {
