@@ -13,7 +13,6 @@ const {
     ButtonBuilder,
     ButtonStyle,
     EmbedBuilder,
-    AttachmentBuilder,
     Events
 } = require('discord.js');
 
@@ -202,59 +201,37 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
         // =================================================
-        // 📂 FILE
-        // =================================================
-        const fileName = att.name || "image.png";
-
-        const file = new AttachmentBuilder(att.url, {
-            name: fileName
-        });
-
-
-        // =================================================
-        // 🎨 EMBED
-        // =================================================
-        const embed = new EmbedBuilder()
-            .setTitle("📸 Новый отчёт")
-            .setDescription(
-                `👤 Рекрут: <@${msg.author.id}>\n\n📎 Скриншот прикреплён ниже`
-            )
-            .setColor("Blue")
-            .setFooter({
-                text: `ID: ${msg.author.id}`
-            })
-            .setTimestamp();
-
-
-        // =================================================
         // 🔘 BUTTONS
         // =================================================
         const row = new ActionRowBuilder().addComponents(
 
             new ButtonBuilder()
                 .setCustomId(`accept_${msg.author.id}`)
-                .setLabel("Принять")
+                .setLabel("✅ Принять")
                 .setStyle(ButtonStyle.Success),
 
             new ButtonBuilder()
                 .setCustomId(`reject_${msg.author.id}`)
-                .setLabel("Отклонить")
+                .setLabel("❌ Отклонить")
                 .setStyle(ButtonStyle.Danger)
         );
 
 
         // =================================================
-        // 📤 SEND
+        // 📤 SEND MESSAGE
         // =================================================
         await audit.send({
-            embeds: [embed],
-            files: [file],
+            content:
+`📸 Новый скриншот
+
+👤 Отправил: <@${msg.author.id}>`,
+            files: [att.url],
             components: [row]
         });
 
 
         // =================================================
-        // 🧹 DELETE ORIGINAL AFTER 10 SEC
+        // 🧹 DELETE ORIGINAL AFTER 20 SEC
         // =================================================
         setTimeout(async () => {
 
@@ -262,7 +239,7 @@ client.on(Events.MessageCreate, async (msg) => {
                 await msg.delete();
             } catch {}
 
-        }, 10000);
+        }, 20000);
 
 
     } catch (e) {
@@ -375,7 +352,11 @@ client.on(Events.InteractionCreate, async (i) => {
             // ✅ FINAL
             // =================================================
             return i.editReply(
-                `✅ Рассылка завершена\n\n📨 Всего: ${users.length}\n✅ Успешно: ${sent}\n❌ Ошибки: ${failed}`
+                `✅ Рассылка завершена
+
+📨 Всего: ${users.length}
+✅ Успешно: ${sent}
+❌ Ошибки: ${failed}`
             );
         }
 
@@ -401,35 +382,14 @@ client.on(Events.InteractionCreate, async (i) => {
 
             saveDB(salary);
 
-            const embed = new EmbedBuilder()
-                .setTitle("💰 Зарплата выдана")
-                .setDescription(`👤 Пользователь: <@${id}>`)
-                .addFields(
-                    {
-                        name: "💵 Сумма",
-                        value: "+10000",
-                        inline: true
-                    },
-                    {
-                        name: "📊 Баланс",
-                        value: `${salary[id]}`,
-                        inline: true
-                    }
-                )
-                .setColor("Green")
-                .setTimestamp();
-
-
             await i.update({
-                content: `✅ Зарплата выдана <@${id}>`,
-                embeds: [],
+                content: `✅ Скриншот принят\n💰 +10000 выдано <@${id}>`,
                 components: []
             });
 
-
-            await salaryChannel.send({
-                embeds: [embed]
-            });
+            await salaryChannel.send(
+                `💰 Зарплата выдана <@${id}>\n📊 Баланс: ${salary[id]}`
+            );
         }
 
 
@@ -439,8 +399,7 @@ client.on(Events.InteractionCreate, async (i) => {
         if (action === "reject") {
 
             await i.update({
-                content: "❌ Скриншот отклонён",
-                embeds: [],
+                content: `❌ Скриншот отклонён`,
                 components: []
             });
         }
