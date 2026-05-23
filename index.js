@@ -24,17 +24,17 @@ app.listen(process.env.PORT || 3000, () => {
 });
 
 // ====================================================================
-// 2. КОНФИГУРАЦИЯ БОТА (Обязательно замени ID ниже на свои цифры!)
+// 2. КОНФИГУРАЦИЯ БОТА (Замени эти ID на свои цифры!)
 // ====================================================================
 const config = {
     TOKEN: process.env.TOKEN || "ТОКЕН_ТВОЕГО_БОТА", 
     CHANNELS: {
-        CATEGORY: "ID_КАТЕГОРИИ_ДЛЯ_ТИКЕТОВ", // Сюда вставь ID категории, где создавать каналы
-        LOGS: "ID_КАНАЛА_ЛОГОВ" // Сюда вставь ID канала для отправки скриншотов-отчетов
+        CATEGORY: "ID_КАТЕГОРИИ_ДЛЯ_ТИКЕТОВ", // Сюда ID категории (цифрами в кавычках)
+        LOGS: "ID_КАНАЛА_ЛОГОВ" // Сюда ID канала для скриншотов (цифрами в кавычках)
     },
     ALLOWED_ROLES: [
-        "ID_РОЛИ_АДМИНА_1", 
-        "ID_РОЛИ_АДМИНА_2"
+        "ID_РОЛИ_АДМИНА_1", // Сюда ID роли админа (цифрами в кавычках)
+        "ID_РОЛИ_АДМИНА_2"  // Если роли две — впиши, если одна — можно стереть эту строку
     ]
 };
 
@@ -83,7 +83,7 @@ client.on('interactionCreate', async (i) => {
         // --- 4.1. КОМАНДА /PANEL ---
         if (i.isChatInputCommand() && i.commandName === 'panel') {
             const embed = new EmbedBuilder()
-                .setTitle("Заявления в семью Darkness")
+                .setTitle("Заявления в цену Darkness")
                 .setDescription("Нажмите на кнопку ниже, соответствующую вашему направлению, чтобы заполнить анкету.")
                 .setColor("#1f8b4c");
 
@@ -127,16 +127,13 @@ client.on('interactionCreate', async (i) => {
 
         // --- 4.3. ОТПРАВКА ЗАПОЛНЕННОЙ МОДАЛКИ (СОЗДАНИЕ ТИКЕТА) ---
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
-            // Мгновенно резервируем ответ у Дискорда (защита от "Приложение не отвечает")
             await i.deferReply({ ephemeral: true }).catch(() => null);
 
             try {
-                // Проверка на спам-клики
                 if (modalLocks.has(i.user.id)) return;
                 modalLocks.add(i.user.id);
                 setTimeout(() => modalLocks.delete(i.user.id), 4000);
 
-                // ПРОВЕРКА НАСТРОЕК КОНФИГУРАЦИИ
                 if (config.CHANNELS.CATEGORY === "ID_КАТЕГОРИИ_ДЛЯ_ТИКЕТОВ" || isNaN(config.CHANNELS.CATEGORY)) {
                     return await i.editReply({ content: "❌ **Ошибка конфигурации:** Вы забыли указать реальный ID категории для тикетов в начале файла `index.js`." });
                 }
@@ -166,6 +163,10 @@ client.on('interactionCreate', async (i) => {
 
                 applications.set(i.user.id, data);
 
+                // Безопасное получение списка ролей (защита от краша из-за .filter)
+                const rawRoles = Array.isArray(config.ALLOWED_ROLES) ? config.ALLOWED_ROLES : [];
+                const validRoles = rawRoles.filter(roleId => roleId && !isNaN(roleId) && roleId.length > 5);
+
                 // Создание канала для тикета
                 const channel = await i.guild.channels.create({
                     name: expectedChannelName,
@@ -174,12 +175,11 @@ client.on('interactionCreate', async (i) => {
                     permissionOverwrites: [
                         { id: i.guild.id, deny: ["ViewChannel"] },
                         { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
-                        ...config.ALLOWED_ROLES.filter(roleId => !isNaN(roleId) && roleId.length > 5).map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
+                        ...validRoles.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
                     ]
                 });
 
-                // ✅ ИСПРАВЛЕНО: добавлена недостающая обёртка в бэктики
-                const rolesPing = config.ALLOWED_ROLES.filter(roleId => !isNaN(roleId) && roleId.length > 5).map(r => `<@&${r}>`).join(" ");
+                const rolesPing = validRoles.map(r => `<@&${r}>`).join(" ");
                 const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
                 let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**\n${data.q1}\n\n**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**\n${data.q2}\n\n**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**\n${data.q3}\n\n**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**\n${data.q4}`;
@@ -233,7 +233,6 @@ client.on('interactionCreate', async (i) => {
 
                 await message.delete().catch(() => null);
 
-                // Отправка в лог-канал
                 if (config.CHANNELS.LOGS && !isNaN(config.CHANNELS.LOGS)) {
                     const logChannel = i.guild.channels.cache.get(config.CHANNELS.LOGS);
                     if (logChannel) {
@@ -248,7 +247,6 @@ client.on('interactionCreate', async (i) => {
                     content: `✅ **Заявка успешно одобрена!** Отчёт со скрином успешно зафиксирован.` 
                 }).catch(() => null);
 
-                // Отправка сообщения игроку в ЛС о принятии
                 const targetUser = await i.guild.members.fetch(targetUserId).catch(() => null);
                 if (targetUser) {
                     await targetUser.send(`🎉 Поздравляем! Ваша заявка в семью **Darkness** была одобрена!`).catch(() => null);
