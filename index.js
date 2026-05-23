@@ -334,6 +334,7 @@ client.on(Events.InteractionCreate, async (i) => {
                         }
                     )
             );
+
             await channel.send({
     content: [
         "<@&1471553901433192532>",
@@ -345,7 +346,8 @@ client.on(Events.InteractionCreate, async (i) => {
     embeds: [embed],
     components: [row]
 });
-          return i.reply({
+
+            return i.reply({
                 content: "✅ Панель отправлена",
                 ephemeral: true
             });
@@ -534,9 +536,16 @@ ${data.q4}
             );
 
             await channel.send({
-                embeds: [embed],
-                components: [row]
-            });
+    content: [
+        "<@&1471553901433192532>",
+        "<@&1458192704524648701>",
+        "<@&1458192781217370173>",
+        "<@&1458484199735689299>",
+        "<@&1468704257606684712>"
+    ].join(" "),
+    embeds: [embed],
+    components: [row]
+});
 
             return i.reply({
                 content: "✅ Заявка отправлена",
