@@ -120,13 +120,6 @@ const processed = new Set();
 const applications = new Map();
 const modalLocks = new Set();
 
-function lockMessage(id) {
-    if (processed.has(id)) return true;
-    processed.add(id);
-    setTimeout(() => { processed.delete(id); }, 120000);
-    return false;
-}
-
 
 // =====================================================
 // READY & REGISTER COMMANDS
@@ -174,7 +167,10 @@ client.on(Events.MessageCreate, async (msg) => {
 
         // SCREEN SYSTEM
         if (msg.channel.id !== config.CHANNELS.SCREEN) return;
-        if (lockMessage(msg.id)) return;
+        
+        if (processed.has(msg.id)) return;
+        processed.add(msg.id);
+        setTimeout(() => { processed.delete(msg.id); }, 120000);
 
         const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
         if (!att) return;
@@ -319,22 +315,17 @@ client.on(Events.InteractionCreate, async (i) => {
             setTimeout(() => modalLocks.delete(i.user.id), 5000);
 
             const type = i.customId.replace("apply_modal_", "");
-
-            // СТРАХОВКА: Формируем точное имя канала, как его сделает Discord
             const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
 
-            // Обновляем кэш каналов сервера, чтобы увидеть действия второго бота (если он есть)
             await i.guild.channels.fetch().catch(() => null);
 
-            // Проверяем, существует ли уже такой канал в нашей категории
             const existingChannel = i.guild.channels.cache.find(c => 
                 c.parentId === config.CHANNELS.CATEGORY && 
                 c.name === expectedChannelName
             );
 
             if (existingChannel) {
-                // Если канал уже есть, просто отправляем пользователю ссылку на него и выходим
-                await i.reply({ content: `⚠️ Ваша заявка уже создана или находится в процессе создания: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
+                await i.reply({ content: `⚠️ Ваша заявка уже создана: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
                 return;
             }
 
@@ -503,7 +494,7 @@ ${data.q4}`;
                     );
 
                     await i.reply({
-                        content: "⬇ Internet-выпадающий список ниже войс-канал, в который отправить кандидата:",
+                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
                         components: [voiceMenu],
                         ephemeral: true
                     });
@@ -524,6 +515,18 @@ ${data.q4}`;
         console.log("[INTERACTION ERROR HANDLED]", e);
     }
 });
+
+
+// =====================================================
+// ПРАВИЛЬНОЕ ВЫКЛЮЧЕНИЕ ДЛЯ RENDER (SIGTERM/SIGINT)
+// =====================================================
+const shutdown = () => {
+    console.log("[BOT] Получен сигнал выключения. Отключаюсь...");
+    client.destroy();
+    process.exit(0);
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 
 // =====================================================
