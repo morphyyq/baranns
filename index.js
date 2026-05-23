@@ -19,12 +19,13 @@ const {
     TextInputBuilder,
     TextInputStyle,
     StringSelectMenuBuilder,
+    ChannelSelectMenuBuilder,
     ChannelType
 } = require("discord.js");
 
 
 // =====================================================
-// KEEP ALIVE
+// KEEP ALIVE (RENDER)
 // =====================================================
 const app = express();
 app.get("/", (_, res) => res.send("Bot Alive"));
@@ -46,67 +47,95 @@ const client = new Client({
 
 
 // =====================================================
-// CONFIG
+// SERVERS CONFIG
 // =====================================================
 const SERVERS = {
     "1458190222042075251": {
+
         CHANNELS: {
+            SCREEN: "1499706104345792512",
+            AUDIT: "1500501911848095906",
+            SALARY: "1500515048970522685",
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417"
-        }
+        },
+
+        ROLE_TARGET: "1458410756453306490",
+
+        ALLOWED_ROLES: [
+            "1471553901433192532",
+            "1458192704524648701",
+            "1458192781217370173",
+            "1458484199735689299",
+            "1468704257606684712"
+        ]
     }
 };
 
 
 // =====================================================
+// DATABASE (SALARY)
+// =====================================================
+const DB_FILE = path.join(__dirname, "salary.json");
+
+function loadDB() {
+    try {
+        return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    } catch {
+        return {};
+    }
+}
+
+function saveDB(data) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+let salary = loadDB();
+
+
+// =====================================================
 // MEMORY
 // =====================================================
+const processed = new Set();
 const applications = new Map();
+
+function lockMessage(id) {
+    if (processed.has(id)) return true;
+    processed.add(id);
+    setTimeout(() => processed.delete(id), 120000);
+    return false;
+}
 
 
 // =====================================================
-// READY (PANEL SEND)
+// READY - PANEL POST
 // =====================================================
 client.once(Events.ClientReady, async () => {
 
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
 
-    const channel = await client.channels.fetch(SERVERS["1458190222042075251"].CHANNELS.PANEL);
+    const channel = await client.channels.fetch("1458410655697731730");
     if (!channel) return;
 
     const embed = new EmbedBuilder()
         .setTitle("🚀 Заявки в семью Darkness")
-        .setDescription(`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
+        .setDescription(
+`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
 ⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
 
-### 🎬 RP-Content состав ###
-• Возможность дальнейшего развития в семье
-• Откаты стрельбы — **не требуются**
+### 🎬 RP-Content ###
+• Развитие в семье
+• Откаты не требуются
 
-### 🔥 Main состав ###
-• Требуются откаты стрельбы от **5 минут GG**
-или
-• Откаты с любой МП/капта/массового мероприятия
+### 🔥 Main ###
+• Откаты от 5 минут GG или МП
 
 ━━━━━━━━━━━━━━
 
-### ⚠️ Важно ознакомиться перед подачей заявки ###
-
-• Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
-
-• Мы не принимаем детей, фриков и неадекватных людей.
-
-• Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
-
-• У нас нет отдельных мест только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
-
-• Если заявка была отклонена — это окончательное решение.
-
-• КД на повторную подачу заявки — **2 дня**.
-
-**📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.**`)
+⚠️ Ознакомьтесь с правилами перед подачей`
+        )
         .setColor("#2b2d31");
 
     const menu = new ActionRowBuilder().addComponents(
@@ -124,6 +153,75 @@ client.once(Events.ClientReady, async () => {
 
 
 // =====================================================
+// MESSAGE SYSTEM (SCREEN + SALARY + /balance)
+// =====================================================
+client.on(Events.MessageCreate, async (msg) => {
+
+    if (!msg.guild || msg.author.bot) return;
+
+    const config = SERVERS[msg.guild.id];
+    if (!config) return;
+
+    // =========================
+    // BALANCE
+    // =========================
+    if (msg.content === "/balance") {
+        return msg.reply({
+            content: `💰 Ваш баланс: ${salary[msg.author.id] || 0}`
+        });
+    }
+
+    // =========================
+    // SCREEN SYSTEM (RECRUIT)
+    // =========================
+    if (msg.channel.id === config.CHANNELS.SCREEN) {
+
+        if (lockMessage(msg.id)) return;
+
+        const att = msg.attachments
+            .filter(a => a.contentType?.startsWith("image"))
+            .first();
+
+        if (!att) return;
+
+        const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
+        if (!audit) return;
+
+        const file = new AttachmentBuilder(att.url, {
+            name: att.name || "screen.png"
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle("📸 РЕКРУТ ОТЧЁТ")
+            .setDescription(`👤 <@${msg.author.id}>`)
+            .setImage(`attachment://${file.name}`)
+            .setColor("Blue")
+            .setFooter({ text: `ID: ${msg.author.id}` });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`accept_${msg.author.id}`)
+                .setLabel("Принять")
+                .setStyle(ButtonStyle.Success),
+
+            new ButtonBuilder()
+                .setCustomId(`reject_${msg.author.id}`)
+                .setLabel("Отклонить")
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        await audit.send({
+            embeds: [embed],
+            files: [file],
+            components: [row]
+        });
+
+        setTimeout(() => msg.delete().catch(() => {}), 10000);
+    }
+});
+
+
+// =====================================================
 // INTERACTIONS
 // =====================================================
 client.on(Events.InteractionCreate, async (i) => {
@@ -133,7 +231,72 @@ client.on(Events.InteractionCreate, async (i) => {
     if (!config) return;
 
     // =========================
-    // SELECT MENU -> MODAL
+    // /ALL SYSTEM
+    // =========================
+    if (i.isChatInputCommand() && i.commandName === "all") {
+
+        const allowed = i.member.roles.cache.some(r =>
+            config.ALLOWED_ROLES.includes(r.id)
+        );
+
+        if (!allowed) {
+            return i.reply({ content: "❌ Нет прав", ephemeral: true });
+        }
+
+        const text = i.options.getString("text");
+
+        await i.deferReply({ ephemeral: true });
+
+        const members = await i.guild.members.fetch();
+
+        const users = [...members.values()].filter(m =>
+            !m.user.bot && m.roles.cache.has(config.ROLE_TARGET)
+        );
+
+        const embed = new EmbedBuilder()
+            .setTitle("📢 ОБЪЯВЛЕНИЕ")
+            .setDescription(text)
+            .setColor("Red");
+
+        let sent = 0;
+        let failed = 0;
+        let index = 0;
+
+        const CONCURRENCY = 5;
+
+        async function worker() {
+            while (index < users.length) {
+
+                const user = users[index++];
+
+                try {
+                    await user.send({ embeds: [embed] });
+                    sent++;
+                } catch {
+                    failed++;
+                }
+
+                await new Promise(r => setTimeout(r, 700));
+            }
+        }
+
+        const workers = Array.from({ length: CONCURRENCY }, worker);
+
+        const progress = setInterval(() => {
+            i.editReply(`📨 ${sent + failed}/${users.length} | ✅ ${sent} | ❌ ${failed}`);
+        }, 3000);
+
+        await Promise.all(workers);
+
+        clearInterval(progress);
+
+        return i.editReply(
+            `✅ Готово\n📨 ${users.length}\n✅ ${sent}\n❌ ${failed}`
+        );
+    }
+
+    // =========================
+    // APPLY MENU -> MODAL
     // =========================
     if (i.isStringSelectMenu() && i.customId === "apply_menu") {
 
@@ -141,13 +304,13 @@ client.on(Events.InteractionCreate, async (i) => {
 
         const modal = new ModalBuilder()
             .setCustomId(`apply_${type}`)
-            .setTitle(type === "academy" ? "Academy" : "Capture");
+            .setTitle(type.toUpperCase());
 
         const fields = [
             { id: "q1", label: "Ник | Имя | Статик | Возраст", placeholder: "Hugo | Женя | 21074 | 20" },
-            { id: "q2", label: "Средний онлайн в день", placeholder: "Например: 4-6 часов" },
-            { id: "q3", label: "В каких семьях были и почему ушли?", placeholder: "Перечислите семьи и причины ухода" },
-            { id: "q4", label: type === "academy" ? "Как узнали о нас?" : "Предоставьте свои откаты", placeholder: type === "academy" ? "Например: на респе баллас" : "Откат с ГГ от 5 минут / МП / капт" }
+            { id: "q2", label: "Средний онлайн", placeholder: "4-6 часов" },
+            { id: "q3", label: "Семьи и причины ухода", placeholder: "Перечислите" },
+            { id: "q4", label: type === "academy" ? "Как узнали?" : "Откаты", placeholder: "..." }
         ];
 
         modal.addComponents(
@@ -194,13 +357,15 @@ client.on(Events.InteractionCreate, async (i) => {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle(`📨 ${type.toUpperCase()}`)
-            .setDescription(`👤 <@${i.user.id}>
+            .setTitle(`📨 ${type.toUpperCase()} ЗАЯВКА`)
+            .setDescription(
+`👤 ${i.user.tag}
 
 ${data.q1}
 ${data.q2}
 ${data.q3}
-${data.q4}`)
+${data.q4}`
+            )
             .setColor("#2b2d31");
 
         const row = new ActionRowBuilder().addComponents(
