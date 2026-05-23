@@ -31,17 +31,19 @@ const {
 
 
 // =====================================================
-// KEEP ALIVE (Для Render/Replit)
+// KEEP ALIVE
 // =====================================================
 const app = express();
+
 app.get("/", (_, res) => {
     res.send(`Bot Alive (Instance: ${INSTANCE_ID})`);
 });
+
 app.listen(process.env.PORT || 3000);
 
 
 // =====================================================
-// CLIENT CONFIG
+// CLIENT
 // =====================================================
 const client = new Client({
     intents: [
@@ -62,7 +64,7 @@ client.on(Events.Error, (error) => {
 
 
 // =====================================================
-// SERVER CONFIG
+// CONFIG
 // =====================================================
 const SERVERS = {
     "1458190222042075251": {
@@ -82,20 +84,20 @@ const SERVERS = {
             "1468704257606684712"
         ],
         ACADEMY_ROLES: [
+            "1458410756453306490",
             "1458485405769797848",
-            "1458410756453306490"
+            "1507798049416675531" // Добавлена третья роль для академии
         ],
         CAPTURE_ROLES: [
             "1458410756453306490",
-            "1475114013611528274",
-            "1475515378783223933"
+            "1475114013611528274" // Роли для каптур (1475515378783223933 убрана согласно ТЗ)
         ]
     }
 };
 
 
 // =====================================================
-// DATABASE (salary.json)
+// DATABASE
 // =====================================================
 const DB_FILE = path.join(__dirname, "salary.json");
 
@@ -126,7 +128,7 @@ const modalLocks = new Set();
 // READY & REGISTER COMMANDS
 // =====================================================
 client.once(Events.ClientReady, async () => {
-    console.log(`[BOT] ONLINE: ${client.user.tag} | ID: ${INSTANCE_ID}`);
+    console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
@@ -136,21 +138,22 @@ client.once(Events.ClientReady, async () => {
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
     try {
+        console.log(`[BOT] [${INSTANCE_ID}] Начало обновления слэш-команд...`);
         for (const guildId of Object.keys(SERVERS)) {
             await rest.put(
                 Routes.applicationGuildCommands(client.user.id, guildId),
                 { body: commands }
             );
         }
-        console.log(`[BOT] Слэш-команды успешно зарегистрированы!`);
+        console.log(`[BOT] [${INSTANCE_ID}] Слэш-команды успешно зарегистрированы!`);
     } catch (e) {
-        console.error(`[BOT ERROR] Ошибка регистрации команд:`, e);
+        console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
     }
 });
 
 
 // =====================================================
-// MESSAGE SYSTEM (Screenshots)
+// MESSAGE SYSTEM
 // =====================================================
 client.on(Events.MessageCreate, async (msg) => {
     try {
@@ -158,6 +161,12 @@ client.on(Events.MessageCreate, async (msg) => {
 
         const config = SERVERS[msg.guild.id];
         if (!config) return;
+
+        if (msg.content === "/balance") {
+            return msg.reply({
+                content: `💰 Баланс: ${salary[msg.author.id] || 0}`
+            });
+        }
 
         // SCREEN SYSTEM
         if (msg.channel.id !== config.CHANNELS.SCREEN) return;
@@ -203,21 +212,22 @@ client.on(Events.MessageCreate, async (msg) => {
         }, 10000);
 
     } catch (e) {
-        console.log(`[MESSAGE ERROR]`, e);
+        console.log(`[MESSAGE ERROR] [${INSTANCE_ID}]`, e);
     }
 });
 
 
 // =====================================================
-// INTERACTIONS (Slash, Menus, Buttons)
+// INTERACTIONS
 // =====================================================
 client.on(Events.InteractionCreate, async (i) => {
     try {
         if (!i.guild) return;
+
         const config = SERVERS[i.guild.id];
         if (!config) return;
 
-        // 1. СЛЭШ-КОМАНДЫ
+        // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             if (i.commandName === "balance") {
                 await i.reply({ content: `💰 Баланс: ${salary[i.user.id] || 0}`, ephemeral: true });
@@ -228,7 +238,33 @@ client.on(Events.InteractionCreate, async (i) => {
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 const embed = new EmbedBuilder()
                     .setTitle("🚀 Заявки в семью Darkness")
-                    .setDescription(`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.\n\n⏳ **Время рассмотрения:** от 1 до 4 дней.\n\n### 🎬 Academy состав ###\n• Возможность развития\n### 🔥 Capture состав ###\n• Откаты GG от 5 минут\n\n**📌 Перед подачей убедитесь, что ваш Discord открыт для связи (ЛС)!**`)
+                    .setDescription(
+`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
+
+⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
+
+### 🎬 RP-Content состав ###
+• Возможность дальнейшего развития в семье
+• Откаты стрельбы — **не требуются**
+
+### 🔥 Main состав ###
+• Требуются откаты стрельбы от **5 минут GG**
+или
+• Откаты с любой МП/капта/массового мероприятия
+
+━━━━━━━━━━━━━━
+
+### ⚠️ Важно ознакомиться перед подачей заявки ###
+
+• Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
+• Мы не принимаем детей, фриков и неадекватных людей.
+• Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
+• У нас нет отдельных местах только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
+• Если заявка была отклонена — это окончательное решение.
+• КД на повторную подачу заявки — **2 дня**.
+
+**📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.**`
+                    )
                     .setColor("#2b2d31");
 
                 const menu = new ActionRowBuilder().addComponents(
@@ -236,8 +272,8 @@ client.on(Events.InteractionCreate, async (i) => {
                         .setCustomId("apply_menu")
                         .setPlaceholder("Выберите тип заявки")
                         .addOptions(
-                            { label: "Academy", value: "academy", emoji: "🎓" },
-                            { label: "Capture", value: "capture", emoji: "⚔️" }
+                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy", emoji: "🎓" },
+                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture", emoji: "⚔️" }
                         )
                 );
 
@@ -247,7 +283,7 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // 2. ОТКРЫТИЕ МОДАЛКИ
+        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -255,14 +291,14 @@ client.on(Events.InteractionCreate, async (i) => {
                 .setTitle(type === "academy" ? "Заявка в Academy" : "Заявка в Capture");
 
             const fields = [
-                { id: "q1", label: "ВАШ СТАТИЧЕСКИЙ ID # И НИК", placeholder: "21074 | Hugo Darkness", style: TextInputStyle.Short },
+                { id: "q1", label: "ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ", placeholder: "21074 | Hugo Darkness", style: TextInputStyle.Short },
                 { id: "q2", label: "ИМЯ И ВОЗРАСТ (В РЕАЛЕ)", placeholder: "Женя | 20", style: TextInputStyle.Short },
-                { id: "q3", label: "ОПЫТ В СЕМЬЯХ?", placeholder: "Да, был в...", style: TextInputStyle.Paragraph },
-                { id: "q4", label: "ПОЧЕМУ МЫ?", placeholder: "Увидел на респе...", style: TextInputStyle.Paragraph }
+                { id: "q3", label: "ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?", placeholder: "Да, был в...", style: TextInputStyle.Paragraph },
+                { id: "q4", label: "ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?", placeholder: "Увидел на респе / медиа контент...", style: TextInputStyle.Paragraph }
             ];
 
             if (type !== "academy") {
-                fields.push({ id: "q5", label: "ОТКАТЫ (ССЫЛКА)", placeholder: "Ссылка на YouTube/Imgur", style: TextInputStyle.Paragraph });
+                fields.push({ id: "q5", label: "Предоставьте свои откаты", placeholder: "Ссылка на откат с ГГ от 5 минут", style: TextInputStyle.Paragraph });
             }
 
             modal.addComponents(
@@ -275,17 +311,50 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // 3. ОТПРАВКА МОДАЛКИ (СОЗДАНИЕ ТИКЕТА)
+        // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
-            if (modalLocks.has(i.user.id)) return;
+            console.log(`[LOG] [${INSTANCE_ID}] Пользователь ${i.user.tag} отправил модалку.`);
+
+            if (modalLocks.has(i.user.id)) {
+                console.log(`[LOG] [${INSTANCE_ID}] Сработал замок! Отклоняю дубликат запроса.`);
+                return;
+            }
             modalLocks.add(i.user.id);
             setTimeout(() => modalLocks.delete(i.user.id), 5000);
 
             const type = i.customId.replace("apply_modal_", "");
-            const expectedName = `${type}-${i.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
+            const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+
+            console.log(`[LOG] [${INSTANCE_ID}] Проверяю наличие канала ${expectedChannelName}...`);
+            await i.guild.channels.fetch().catch(() => null);
+
+            const existingChannel = i.guild.channels.cache.find(c => 
+                c.parentId === config.CHANNELS.CATEGORY && 
+                c.name === expectedChannelName
+            );
+
+            if (existingChannel) {
+                console.log(`[LOG] [${INSTANCE_ID}] Канал уже существует, отменяю создание.`);
+                await i.reply({ content: `⚠️ Ваша заявка уже создана: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
+                return;
+            }
+
+            console.log(`[LOG] [${INSTANCE_ID}] Всё чисто. Начинаю создание канала...`);
+
+            const data = {
+                type,
+                q1: i.fields.getTextInputValue("q1"),
+                q2: i.fields.getTextInputValue("q2"),
+                q3: i.fields.getTextInputValue("q3"),
+                q4: i.fields.getTextInputValue("q4"),
+                q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null,
+                userId: i.user.id
+            };
+
+            applications.set(i.user.id, data);
 
             const channel = await i.guild.channels.create({
-                name: expectedName,
+                name: expectedChannelName,
                 type: ChannelType.GuildText,
                 parent: config.CHANNELS.CATEGORY,
                 permissionOverwrites: [
@@ -295,137 +364,198 @@ client.on(Events.InteractionCreate, async (i) => {
                 ]
             });
 
-            const data = {
-                q1: i.fields.getTextInputValue("q1"),
-                q2: i.fields.getTextInputValue("q2"),
-                q3: i.fields.getTextInputValue("q3"),
-                q4: i.fields.getTextInputValue("q4"),
-                q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null
-            };
+            const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
+            const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
+
+            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
+${data.q1}
+
+**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
+${data.q2}
+
+**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
+${data.q3}
+
+**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
+${data.q4}`;
+
+            if (type !== "academy") {
+                embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
+            }
+
+            embedDescription += `\n\n**Пользователь**\n<@${i.user.id}>`;
 
             const embed = new EmbedBuilder()
-                .setTitle(`Новая заявка: ${type.toUpperCase()}`)
+                .setTitle("Заявление")
+                .setDescription(embedDescription)
                 .setColor("#1f8b4c")
                 .addFields(
-                    { name: "Ник/Статик", value: data.q1 },
-                    { name: "Имя/Возраст", value: data.q2 },
-                    { name: "Опыт", value: data.q3 },
-                    { name: "Причина", value: data.q4 }
+                    { name: "Username", value: i.user.username, inline: true },
+                    { name: "ID", value: i.user.id, inline: true }
                 );
-            if (data.q5) embed.addFields({ name: "Откаты", value: data.q5 });
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Рассмотрение").setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Обзвон").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Взять на рассмотрение").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
             );
 
-            await channel.send({ content: `<@${i.user.id}> | ${config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ")}`, embeds: [embed], components: [row] });
-            await i.reply({ content: `✅ Заявка создана: <#${channel.id}>`, ephemeral: true });
+            await channel.send({ content: topContent, embeds: [embed], components: [row] });
+            await i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
+            return;
         }
 
-        // 4. ОБРАБОТКА КНОПОК И МЕНЮ ОБЗВОНА
-        if (i.isButton()) {
-            const [prefix, action, targetId] = i.customId.split("_");
-            const member = await i.guild.members.fetch(i.user.id);
-            const hasPermission = config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+        // ОБРАБОТКА ВЫБОРА ВОЙСА (ДЛЯ ОБЗВОНА)
+        if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
+            const targetId = i.customId.replace("call_voice_", "");
+            const voiceChannelId = i.values[0];
 
-            if (!hasPermission) return i.reply({ content: "❌ Нет прав.", ephemeral: true });
+            const messages = await i.channel.messages.fetch({ limit: 20 });
+            const appMessage = messages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
 
-            // Логика отчетов по скринам (accept/reject)
-            if (prefix === "accept" || prefix === "reject") {
-                const targetIdReport = action; // В этой части кода action — это ID пользователя
-                const embed = EmbedBuilder.from(i.message.embeds[0]);
-                if (prefix === "accept") {
-                    salary[targetIdReport] = (salary[targetIdReport] || 0) + 1000;
-                    saveDB(salary);
-                    embed.setColor("Green").setTitle("📸 Отчёт одобрен (+1000)");
-                } else {
-                    embed.setColor("Red").setTitle("📸 Отчёт отклонён");
-                }
-                return i.update({ embeds: [embed], components: [] });
+            if (appMessage) {
+                const embed = EmbedBuilder.from(appMessage.embeds[0]);
+                embed.setColor("Orange").setTitle("Заявление (Вызов на обзвон)");
+                await appMessage.edit({ embeds: [embed] });
             }
 
-            // Логика заявок (app)
-            if (prefix === "app") {
+            const voiceUrl = `https://discord.com/channels/${i.guild.id}/${voiceChannelId}`;
+
+            await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>!\nПожалуйста, перейдите в голосовой канал: [Войти в голосовой канал](${voiceUrl}) (<#${voiceChannelId}>).`);
+
+            const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
+            if (targetMember) {
+                await targetMember.send({
+                    content: `🔔 **Привет!** Твоя заявка в семью **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовому каналу по прямой ссылке:\n${voiceUrl}`
+                }).catch(() => {
+                    i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
+                });
+            }
+
+            await i.reply({ content: "✅ Ссылка отправлена кандидату в тикет и в ЛС!", ephemeral: true });
+            return;
+        }
+
+        // ОБРАБОТКА КНОПОК
+        if (i.isButton()) {
+            const parts = i.customId.split("_");
+            const member = await i.guild.members.fetch(i.user.id);
+
+            const hasPermission = config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+            if (!hasPermission) {
+                await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
+                return;
+            }
+
+            // Кнопки отчетов скриншотов
+            if (parts[0] === "accept" || parts[0] === "reject") {
+                const action = parts[0];
+                const targetId = parts[1];
+                const embed = EmbedBuilder.from(i.message.embeds[0]);
+
+                if (action === "accept") {
+                    salary[targetId] = (salary[targetId] || 0) + 1000;
+                    saveDB(salary);
+                    embed.setColor("Green").setTitle("📸 Отчёт одобрен");
+                    await i.update({ embeds: [embed], components: [] });
+                } else {
+                    embed.setColor("Red").setTitle("📸 Отчёт отклонён");
+                    await i.update({ embeds: [embed], components: [] });
+                }
+                return;
+            }
+
+            // Кнопки управления заявками (app)
+            if (parts[0] === "app") {
+                const action = parts[1];
+                const targetId = parts[2];
                 const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
                 const embed = EmbedBuilder.from(i.message.embeds[0]);
 
                 if (action === "accept") {
-                    if (!targetMember) return i.reply({ content: "❌ Игрок покинул сервер.", ephemeral: true });
+                    if (!targetMember) {
+                        await i.reply({ content: "❌ Пользователь вышел с сервера.", ephemeral: true });
+                        return;
+                    }
                     
                     const isAcademy = i.channel.name.startsWith("academy");
-                    const roles = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
-                    await targetMember.roles.add(roles).catch(() => null);
+                    const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
+                    await targetMember.roles.add(rolesToAdd).catch(() => null);
 
-                    // ОТПРАВКА В ЛС
-                    await targetMember.send({
-                        content: `🎉 **Поздравляем!** Ваша заявка в семью **Darkness** была **одобрена**!\nДобро пожаловать в состав **${isAcademy ? "Academy" : "Capture"}**.`
-                    }).catch(() => i.channel.send(`⚠️ <@${targetId}>, не смог отправить уведомление в ЛС (закрыт профиль).`));
+                    // Закрытие тикета для создателя (удаление прав на просмотр)
+                    await i.channel.permissionOverwrites.edit(targetId, {
+                        ViewChannel: false,
+                        SendMessages: false
+                    }).catch(() => null);
 
-                    embed.setColor("Green").setTitle("Заявление (Одобрено)");
+                    // Переименовываем канал в закрытый
+                    const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "");
+                    await i.channel.setName(`closed-${cleanName}`).catch(() => null);
+
+                    // Обновляем эмбед сообщения
+                    embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
                     await i.update({ embeds: [embed], components: [] });
-                    await i.channel.send("🎉 Канал удалится через 15 сек.");
-                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
-                }
 
-                if (action === "reject") {
-                    // ОТПРАВКА В ЛС ПРИ ОТКАЗЕ
-                    if (targetMember) {
-                        await targetMember.send({
-                            content: `❌ К сожалению, ваша заявка в семью **Darkness** была **отклонена**.`
-                        }).catch(() => null);
-                    }
-
-                    embed.setColor("Red").setTitle("Заявление (Отклонено)");
-                    await i.update({ embeds: [embed], components: [] });
-                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
+                    // Запрашиваем скриншот отчета у администратора
+                    await i.channel.send({
+                        content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **предоставьте отчёт (скрин с планшета)** в этот канал.`
+                    });
+                    return;
                 }
 
                 if (action === "review") {
                     embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
                     await i.update({ embeds: [embed] });
-                    await i.channel.send(`⏳ <@${i.user.id}> рассматривает заявку.`);
+                    await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
+                    return;
                 }
 
                 if (action === "call") {
                     const voiceMenu = new ActionRowBuilder().addComponents(
                         new ChannelSelectMenuBuilder()
                             .setCustomId(`call_voice_${targetId}`)
-                            .setPlaceholder("Выберите канал для обзвона")
+                            .setPlaceholder("Выберите голосовой канал для кандидата")
                             .addChannelTypes(ChannelType.GuildVoice)
                     );
-                    await i.reply({ content: "Выберите канал:", components: [voiceMenu], ephemeral: true });
+
+                    await i.reply({
+                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
+                        components: [voiceMenu],
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                if (action === "reject") {
+                    embed.setColor("Red").setTitle("Заявление (Отклонено)");
+                    await i.update({ embeds: [embed], components: [] });
+                    await i.channel.send(`❌ Заявка отклонена. Канал будет удален через 15 секунд.`);
+                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
+                    return;
                 }
             }
         }
 
-        // 5. ЛОГИКА ВЫБОРА ВОЙСА
-        if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
-            const targetId = i.customId.replace("call_voice_", "");
-            const voiceId = i.values[0];
-            const voiceUrl = `https://discord.com/channels/${i.guild.id}/${voiceId}`;
-
-            await i.channel.send(`📞 <@${targetId}>, вас ждут в голосовом канале: <#${voiceId}>`);
-            
-            const target = await i.guild.members.fetch(targetId).catch(() => null);
-            if (target) {
-                await target.send({ content: `🔔 Вас вызвали на обзвон в **Darkness**!\nЗайдите сюда: ${voiceUrl}` }).catch(() => null);
-            }
-            await i.reply({ content: "✅ Уведомление отправлено.", ephemeral: true });
-        }
-
     } catch (e) {
-        console.error(`[INTERACTION ERROR]`, e);
+        console.log(`[INTERACTION ERROR HANDLED] [${INSTANCE_ID}]`, e);
     }
 });
 
+
+// =====================================================
+// ПРАВИЛЬНОЕ ВЫКЛЮЧЕНИЕ ДЛЯ RENDER (SIGTERM/SIGINT)
+// =====================================================
 const shutdown = () => {
+    console.log(`[BOT] [${INSTANCE_ID}] Получен сигнал выключения. Отключаюсь...`);
     client.destroy();
     process.exit(0);
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
+
+// =====================================================
+// LOGIN
+// =====================================================
 client.login(process.env.TOKEN);
