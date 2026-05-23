@@ -346,9 +346,6 @@ client.on(Events.InteractionCreate, async (i) => {
     embeds: [embed],
     components: [row]
 });
-                embeds: [embed],
-                components: [menu]
-            });
 
             return i.reply({
                 content: "✅ Панель отправлена",
