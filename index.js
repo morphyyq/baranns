@@ -14,7 +14,13 @@ const {
     ButtonStyle,
     EmbedBuilder,
     AttachmentBuilder,
-    Events
+    Events,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    StringSelectMenuBuilder,
+    ChannelSelectMenuBuilder,
+    ChannelType
 } = require("discord.js");
 
 
@@ -22,14 +28,8 @@ const {
 // 🌐 KEEP ALIVE
 // =====================================================
 const app = express();
-
-app.get("/", (_, res) => {
-    res.send("Bot Alive");
-});
-
-app.listen(process.env.PORT || 3000, () => {
-    console.log("[WEB] SERVER STARTED");
-});
+app.get("/", (_, res) => res.send("Bot Alive"));
+app.listen(process.env.PORT || 3000, () => console.log("[WEB] SERVER STARTED"));
 
 
 // =====================================================
@@ -42,455 +42,347 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers
     ],
-    partials: [
-        Partials.Channel,
-        Partials.Message
-    ]
+    partials: [Partials.Channel, Partials.Message]
 });
 
 
 // =====================================================
-// 📌 SERVERS CONFIG
+// 📌 SERVERS
 // =====================================================
 const SERVERS = {
 
-    // =================================================
-    // SERVER 1 (SCREEN SYSTEM + /all)
-    // =================================================
     "1458190222042075251": {
-
         CHANNELS: {
             SCREEN: "1499706104345792512",
             AUDIT: "1500501911848095906",
-            SALARY: "1500515048970522685"
+            SALARY: "1500515048970522685",
+            APPLICATIONS: "1458410655697731730",
+            CATEGORY: "1458410646956806196",
+            AUDIT_APP: "1464575195418460417"
         },
-
         ROLE_TARGET: "1458410756453306490",
-
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
             "1458192781217370173"
-        ]
-    },
-
-
-    // =================================================
-    // SERVER 2 (/all ONLY)
-    // =================================================
-    "1504470399268819115": {
-
-        CHANNELS: {},
-
-        ROLE_TARGET: "1504470450305241288",
-
-        ALLOWED_ROLES: [
-            "1504470484950192160",
-            "1504470549064323284"
         ]
     }
 };
 
 
 // =====================================================
-// 💾 DATABASE
+// 💾 DB
 // =====================================================
 const DB_FILE = path.join(__dirname, "salary.json");
 
 function loadDB() {
-
-    try {
-
-        return JSON.parse(
-            fs.readFileSync(DB_FILE, "utf8")
-        );
-
-    } catch {
-
-        return {};
-    }
+    try { return JSON.parse(fs.readFileSync(DB_FILE, "utf8")); }
+    catch { return {}; }
 }
 
 function saveDB(data) {
-
-    fs.writeFileSync(
-        DB_FILE,
-        JSON.stringify(data, null, 2)
-    );
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
 let salary = loadDB();
 
 
 // =====================================================
-// 🔒 ANTI DUPLICATE
+// 🔒 LOCK
 // =====================================================
 const processed = new Set();
+const applications = new Map();
 
 function lockMessage(id) {
-
-    if (processed.has(id)) {
-        return true;
-    }
-
+    if (processed.has(id)) return true;
     processed.add(id);
-
-    setTimeout(() => {
-        processed.delete(id);
-    }, 120000);
-
+    setTimeout(() => processed.delete(id), 120000);
     return false;
 }
 
 
 // =====================================================
-// 🛡 ERROR HANDLERS
-// =====================================================
-process.on("unhandledRejection", (err) => {
-    console.log("[UNHANDLED]", err);
-});
-
-process.on("uncaughtException", (err) => {
-    console.log("[CRASH]", err);
-});
-
-
-// =====================================================
-// ✅ READY
+// READY
 // =====================================================
 client.once(Events.ClientReady, () => {
-
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
 });
 
 
 // =====================================================
-// 📸 SCREEN SYSTEM
+// 📸 SCREEN SYSTEM (ТВОЙ)
 // =====================================================
 client.on(Events.MessageCreate, async (msg) => {
 
     try {
 
-        if (!msg?.author) return;
-        if (msg.author.bot) return;
-        if (!msg.guild) return;
+        if (!msg.guild || msg.author.bot) return;
 
         const config = SERVERS[msg.guild.id];
-
         if (!config) return;
 
-
-        // =================================================
-        // 💰 BALANCE
-        // =================================================
         if (msg.content === "/balance") {
-
-            return msg.reply({
-                content: `💰 Ваш баланс: ${salary[msg.author.id] || 0}`
-            });
+            return msg.reply({ content: `💰 Баланс: ${salary[msg.author.id] || 0}` });
         }
 
-
-        // =================================================
-        // ONLY SERVER 1 SCREEN SYSTEM
-        // =================================================
-        if (!config.CHANNELS?.SCREEN) return;
-
+        if (!config.CHANNELS.SCREEN) return;
         if (msg.channel.id !== config.CHANNELS.SCREEN) return;
 
-
-        // =================================================
-        // 🔒 LOCK
-        // =================================================
         if (lockMessage(msg.id)) return;
 
-
-        // =================================================
-        // 📎 IMAGE
-        // =================================================
-        const att = msg.attachments
-            .filter(a =>
-                a.contentType?.startsWith("image")
-            )
-            .first();
-
+        const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
         if (!att) return;
 
+        const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
 
-        // =================================================
-        // 📂 AUDIT CHANNEL
-        // =================================================
-        const audit = await client.channels.fetch(
-            config.CHANNELS.AUDIT
-        );
+        const file = new AttachmentBuilder(att.url, { name: att.name || "img.png" });
 
-        if (!audit) return;
-
-
-        // =================================================
-        // 📂 FILE
-        // =================================================
-        const fileName = att.name || "image.png";
-
-        const file = new AttachmentBuilder(att.url, {
-            name: fileName
-        });
-
-
-        // =================================================
-        // 🎨 EMBED
-        // =================================================
         const embed = new EmbedBuilder()
             .setTitle("📸 Новый отчёт")
-            .setDescription(
-                `👤 Рекрут: <@${msg.author.id}>`
-            )
-            .setImage(`attachment://${fileName}`)
-            .setColor("Blue")
-            .setFooter({
-                text: `ID: ${msg.author.id}`
-            })
-            .setTimestamp();
+            .setDescription(`👤 <@${msg.author.id}>`)
+            .setImage(`attachment://${file.name}`)
+            .setColor("Blue");
 
-
-        // =================================================
-        // 🔘 BUTTONS
-        // =================================================
         const row = new ActionRowBuilder().addComponents(
-
-            new ButtonBuilder()
-                .setCustomId(`accept_${msg.author.id}`)
-                .setLabel("Принять")
-                .setStyle(ButtonStyle.Success),
-
-            new ButtonBuilder()
-                .setCustomId(`reject_${msg.author.id}`)
-                .setLabel("Отклонить")
-                .setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`accept_${msg.author.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`reject_${msg.author.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
         );
 
+        await audit.send({ embeds: [embed], files: [file], components: [row] });
 
-        // =================================================
-        // 📤 SEND
-        // =================================================
-        await audit.send({
-            embeds: [embed],
-            files: [file],
-            components: [row]
-        });
-
-
-        // =================================================
-        // 🧹 DELETE ORIGINAL
-        // =================================================
-        setTimeout(async () => {
-
-            try {
-                await msg.delete();
-            } catch {}
-
-        }, 10000);
+        setTimeout(() => msg.delete().catch(() => {}), 10000);
 
     } catch (e) {
-
         console.log("[SCREEN ERROR]", e);
     }
 });
 
 
 // =====================================================
-// ⚡ INTERACTIONS
+// 📢 INTERACTIONS
 // =====================================================
 client.on(Events.InteractionCreate, async (i) => {
 
     try {
 
         if (!i.guild) return;
-
         const config = SERVERS[i.guild.id];
-
         if (!config) return;
-
 
         // =================================================
         // 📢 /all
         // =================================================
         if (i.isChatInputCommand() && i.commandName === "all") {
 
-            const allowed = i.member.roles.cache.some(role =>
-                config.ALLOWED_ROLES.includes(role.id)
-            );
-
-            if (!allowed) {
-
-                return i.reply({
-                    content: "❌ Нет прав",
-                    ephemeral: true
-                });
-            }
+            if (!i.member.roles.cache.some(r => config.ALLOWED_ROLES.includes(r.id)))
+                return i.reply({ content: "❌ Нет прав", ephemeral: true });
 
             const text = i.options.getString("text");
-
-            await i.deferReply({
-                ephemeral: true
-            });
+            await i.deferReply({ ephemeral: true });
 
             const members = await i.guild.members.fetch();
-
-            const users = [...members.values()].filter(member =>
-                !member.user.bot &&
-                member.roles.cache.has(config.ROLE_TARGET)
+            const users = [...members.values()].filter(m =>
+                !m.user.bot && m.roles.cache.has(config.ROLE_TARGET)
             );
 
             const embed = new EmbedBuilder()
-                .setTitle("📢 Объявление")
+                .setTitle("📢 Announcement")
                 .setDescription(text)
-                .setColor("Red")
-                .setTimestamp();
+                .setColor("Red");
 
-            let sent = 0;
-            let failed = 0;
-            let index = 0;
-
-            const CONCURRENCY = 5;
-
-
-            async function worker() {
-
-                while (index < users.length) {
-
-                    const user = users[index++];
-
-                    try {
-
-                        await user.send({
-                            embeds: [embed]
-                        });
-
-                        sent++;
-
-                    } catch {
-
-                        failed++;
-                    }
-
-                    await new Promise(resolve =>
-                        setTimeout(resolve, 700)
-                    );
-                }
+            for (const user of users) {
+                try { await user.send({ embeds: [embed] }); } catch {}
             }
 
-            const workers = Array.from(
-                { length: CONCURRENCY },
-                worker
-            );
-
-
-            // =================================================
-            // 📊 LIVE PROGRESS
-            // =================================================
-            const progress = setInterval(() => {
-
-                i.editReply(
-                    `📨 ${sent + failed}/${users.length} | ✅ ${sent} | ❌ ${failed}`
-                ).catch(() => {});
-
-            }, 3000);
-
-
-            await Promise.all(workers);
-
-            clearInterval(progress);
-
-
-            // =================================================
-            // ✅ FINAL
-            // =================================================
-            return i.editReply(
-                `✅ Рассылка завершена\n\n📨 Всего: ${users.length}\n✅ Успешно: ${sent}\n❌ Ошибки: ${failed}`
-            );
+            return i.editReply("✅ Отправлено");
         }
 
+        // =================================================
+        // 🧾 APPLICATION MENU
+        // =================================================
+        if (i.isStringSelectMenu() && i.customId === "apply_menu") {
+
+            const type = i.values[0];
+
+            const modal = new ModalBuilder()
+                .setCustomId(`apply_modal_${type}`)
+                .setTitle(type.toUpperCase());
+
+            const fields = [
+                ["q1", "Ник | Имя | Статик | Возраст"],
+                ["q2", "Онлайн"],
+                ["q3", "Опыт / семьи"],
+                ["q4", type === "academy" ? "Как узнали?" : "Откаты"]
+            ];
+
+            const components = fields.map(f =>
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId(f[0])
+                        .setLabel(f[1])
+                        .setStyle(f[0] === "q3" || f[0] === "q4" ? TextInputStyle.Paragraph : TextInputStyle.Short)
+                )
+            );
+
+            modal.addComponents(...components);
+            return i.showModal(modal);
+        }
+
+        // =================================================
+        // 📦 MODAL SUBMIT
+        // =================================================
+        if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
+
+            const type = i.customId.replace("apply_modal_", "");
+            const nick = i.fields.getTextInputValue("q1");
+
+            const data = {
+                type,
+                q1: i.fields.getTextInputValue("q1"),
+                q2: i.fields.getTextInputValue("q2"),
+                q3: i.fields.getTextInputValue("q3"),
+                q4: i.fields.getTextInputValue("q4"),
+                userId: i.user.id
+            };
+
+            applications.set(i.user.id, data);
+
+            const category = await i.guild.channels.fetch(config.CHANNELS.CATEGORY);
+
+            const channel = await i.guild.channels.create({
+                name: `app-${nick.replace(/\s/g, "-")}`,
+                type: ChannelType.GuildText,
+                parent: category.id,
+                permissionOverwrites: [
+                    { id: i.guild.id, deny: ["ViewChannel"] },
+                    { id: i.user.id, allow: ["ViewChannel", "SendMessages"] }
+                ]
+            });
+
+            const embed = new EmbedBuilder()
+                .setTitle(`📨 ${type.toUpperCase()}`)
+                .setDescription(
+`👤 <@${i.user.id}>
+
+${data.q1}
+${data.q2}
+${data.q3}
+${data.q4}`
+                )
+                .setColor("Blue");
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("✔").setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("👀").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("📞").setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("✖").setStyle(ButtonStyle.Danger)
+            );
+
+            await channel.send({ embeds: [embed], components: [row] });
+
+            return i.reply({ content: "✅ Отправлено", ephemeral: true });
+        }
 
         // =================================================
         // 🔘 BUTTONS
         // =================================================
-        if (!i.isButton()) return;
+        if (i.isButton()) {
 
-        const [action, userId] = i.customId.split("_");
+            const [action, , userId] = i.customId.split("_");
 
+            if (!i.member.roles.cache.some(r => config.ALLOWED_ROLES.includes(r.id)))
+                return;
 
-        // =================================================
-        // ONLY SERVER 1 BUTTON SYSTEM
-        // =================================================
-        if (!config.CHANNELS?.SALARY) return;
+            const data = applications.get(userId);
+            if (!data) return;
 
-        const salaryChannel = await client.channels.fetch(
-            config.CHANNELS.SALARY
-        );
+            const audit = await i.guild.channels.fetch(config.CHANNELS.AUDIT_APP);
 
-        if (!salaryChannel) return;
+            // ACCEPT
+            if (i.customId.startsWith("app_accept")) {
 
+                const member = await i.guild.members.fetch(userId);
 
-        // =================================================
-        // ✅ ACCEPT
-        // =================================================
-        if (action === "accept") {
+                const roles = data.type === "academy"
+                    ? ["1458485405769797848", "1458410756453306490"]
+                    : ["1458410756453306490", "1475114013611528274", "1475515378783223933"];
 
-            salary[userId] = (salary[userId] || 0) + 10000;
+                await member.roles.add(roles);
 
-            saveDB(salary);
+                await audit.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle("ПРИНЯТ")
+                            .setColor("Green")
+                            .setDescription(`<@${userId}>`)
+                    ]
+                });
 
-            const embed = new EmbedBuilder()
-                .setTitle("💰 Зарплата выдана")
-                .setDescription(
-                    `👤 Пользователь: <@${userId}>`
-                )
-                .addFields(
-                    {
-                        name: "💵 Сумма",
-                        value: "+10000",
-                        inline: true
-                    },
-                    {
-                        name: "📊 Баланс",
-                        value: `${salary[userId]}`,
-                        inline: true
-                    }
-                )
-                .setColor("Green")
-                .setTimestamp();
+                return i.channel.delete().catch(() => {});
+            }
 
-            await salaryChannel.send({
-                embeds: [embed]
-            });
+            // REJECT
+            if (i.customId.startsWith("app_reject")) {
 
-            try {
-                await i.message.delete();
-            } catch {}
+                await audit.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle("ОТКЛОНЕН")
+                            .setColor("Red")
+                            .setDescription(`<@${userId}>`)
+                    ]
+                });
 
-            return;
+                return i.channel.delete().catch(() => {});
+            }
+
+            // REVIEW
+            if (i.customId.startsWith("app_review")) {
+                return i.reply({ content: `👀 На рассмотрении <@${i.user.id}>` });
+            }
+
+            // CALL
+            if (i.customId.startsWith("app_call")) {
+
+                const menu = new ActionRowBuilder().addComponents(
+                    new ChannelSelectMenuBuilder()
+                        .setCustomId(`voice_select_${userId}`)
+                        .setChannelTypes(ChannelType.GuildVoice)
+                        .setPlaceholder("Выбор войса")
+                );
+
+                return i.reply({ components: [menu], ephemeral: true });
+            }
         }
 
-
         // =================================================
-        // ❌ REJECT
+        // 🎧 VOICE SELECT
         // =================================================
-        if (action === "reject") {
+        if (i.isChannelSelectMenu() && i.customId.startsWith("voice_select_")) {
 
-            try {
-                await i.message.delete();
-            } catch {}
+            const userId = i.customId.split("_")[2];
+            const voice = await i.guild.channels.fetch(i.values[0]);
+
+            const audit = await i.guild.channels.fetch(config.CHANNELS.AUDIT_APP);
+
+            await audit.send({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle("📞 ОБЗВОН")
+                        .setDescription(`<@${userId}> → ${voice}`)
+                ]
+            });
+
+            return i.update({ content: "✔ OK", components: [] });
         }
 
     } catch (e) {
-
         console.log("[INTERACTION ERROR]", e);
     }
 });
 
 
 // =====================================================
-// 🔐 LOGIN
+// LOGIN
 // =====================================================
 client.login(process.env.TOKEN);
