@@ -50,25 +50,49 @@ const client = new Client({
 
 
 // =====================================================
-// 📌 CHANNELS
+// 📌 SERVERS CONFIG
 // =====================================================
-const CHANNELS = {
-    SCREEN: "1499706104345792512",
-    AUDIT: "1500501911848095906",
-    SALARY: "1500515048970522685"
+const SERVERS = {
+
+    // =================================================
+    // SERVER 1 (СТАРЫЙ)
+    // =================================================
+    "YOUR_FIRST_SERVER_ID": {
+
+        CHANNELS: {
+            SCREEN: "1499706104345792512",
+            AUDIT: "1500501911848095906",
+            SALARY: "1500515048970522685"
+        },
+
+        ROLE_TARGET: "1458410756453306490",
+
+        ALLOWED_ROLES: [
+            "1471553901433192532",
+            "1458192704524648701",
+            "1458192781217370173"
+        ]
+    },
+
+
+    // =================================================
+    // SERVER 2 (НОВЫЙ)
+    // =================================================
+    "YOUR_SECOND_SERVER_ID": {
+
+        // screen system не нужен
+        CHANNELS: {},
+
+        // кому отправлять /all
+        ROLE_TARGET: "1504470450305241288",
+
+        // кто может использовать /all
+        ALLOWED_ROLES: [
+            "1504470484950192160",
+            "1504470549064323284"
+        ]
+    }
 };
-
-
-// =====================================================
-// 📌 ROLES
-// =====================================================
-const ROLE_TARGET = "1458410756453306490";
-
-const ALLOWED_ROLES = [
-    "1471553901433192532",
-    "1458192704524648701",
-    "1458192781217370173"
-];
 
 
 // =====================================================
@@ -77,6 +101,7 @@ const ALLOWED_ROLES = [
 const DB_FILE = path.join(__dirname, "salary.json");
 
 function loadDB() {
+
     try {
         return JSON.parse(
             fs.readFileSync(DB_FILE, "utf8")
@@ -87,6 +112,7 @@ function loadDB() {
 }
 
 function saveDB(data) {
+
     fs.writeFileSync(
         DB_FILE,
         JSON.stringify(data, null, 2)
@@ -135,10 +161,6 @@ process.on("uncaughtException", (err) => {
 client.once(Events.ClientReady, () => {
 
     console.log(`[BOT] ONLINE: ${client.user.tag}`);
-
-    console.log(`[SCREEN] ${CHANNELS.SCREEN}`);
-    console.log(`[AUDIT] ${CHANNELS.AUDIT}`);
-    console.log(`[SALARY] ${CHANNELS.SALARY}`);
 });
 
 
@@ -149,11 +171,13 @@ client.on(Events.MessageCreate, async (msg) => {
 
     try {
 
-        // =================================================
-        // IGNORE BOTS
-        // =================================================
         if (!msg?.author) return;
         if (msg.author.bot) return;
+        if (!msg.guild) return;
+
+        const config = SERVERS[msg.guild.id];
+
+        if (!config) return;
 
 
         // =================================================
@@ -168,19 +192,21 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
         // =================================================
-        // 📸 ONLY SCREEN CHANNEL
+        // ONLY SERVER 1 SCREEN SYSTEM
         // =================================================
-        if (msg.channel.id !== CHANNELS.SCREEN) return;
+        if (!config.CHANNELS?.SCREEN) return;
+
+        if (msg.channel.id !== config.CHANNELS.SCREEN) return;
 
 
         // =================================================
-        // 🔒 HARD LOCK
+        // 🔒 LOCK
         // =================================================
         if (lockMessage(msg.id)) return;
 
 
         // =================================================
-        // 📎 ONLY ONE IMAGE
+        // 📎 ONLY IMAGE
         // =================================================
         const att = msg.attachments
             .filter(a =>
@@ -192,9 +218,11 @@ client.on(Events.MessageCreate, async (msg) => {
 
 
         // =================================================
-        // 🛡 AUDIT CHANNEL
+        // 📂 AUDIT
         // =================================================
-        const audit = await client.channels.fetch(CHANNELS.AUDIT);
+        const audit = await client.channels.fetch(
+            config.CHANNELS.AUDIT
+        );
 
         if (!audit) return;
 
@@ -277,13 +305,20 @@ client.on(Events.InteractionCreate, async (i) => {
 
     try {
 
+        if (!i.guild) return;
+
+        const config = SERVERS[i.guild.id];
+
+        if (!config) return;
+
+
         // =================================================
         // 📢 /all
         // =================================================
         if (i.isChatInputCommand() && i.commandName === "all") {
 
             const allowed = i.member.roles.cache.some(role =>
-                ALLOWED_ROLES.includes(role.id)
+                config.ALLOWED_ROLES.includes(role.id)
             );
 
             if (!allowed) {
@@ -304,7 +339,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const users = [...members.values()].filter(member =>
                 !member.user.bot &&
-                member.roles.cache.has(ROLE_TARGET)
+                member.roles.cache.has(config.ROLE_TARGET)
             );
 
             const embed = new EmbedBuilder()
@@ -318,7 +353,6 @@ client.on(Events.InteractionCreate, async (i) => {
             let index = 0;
 
             const CONCURRENCY = 5;
-
 
             async function worker() {
 
@@ -350,10 +384,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 worker
             );
 
-
-            // =================================================
-            // 📊 LIVE PROGRESS
-            // =================================================
             const progress = setInterval(() => {
 
                 i.editReply(
@@ -362,15 +392,10 @@ client.on(Events.InteractionCreate, async (i) => {
 
             }, 3000);
 
-
             await Promise.all(workers);
 
             clearInterval(progress);
 
-
-            // =================================================
-            // ✅ FINAL
-            // =================================================
             return i.editReply(
                 `✅ Рассылка завершена\n\n📨 Всего: ${users.length}\n✅ Успешно: ${sent}\n❌ Ошибки: ${failed}`
             );
@@ -384,7 +409,12 @@ client.on(Events.InteractionCreate, async (i) => {
 
         const [action, userId] = i.customId.split("_");
 
-        const salaryChannel = await client.channels.fetch(CHANNELS.SALARY);
+        // screen system only server 1
+        if (!config.CHANNELS?.SALARY) return;
+
+        const salaryChannel = await client.channels.fetch(
+            config.CHANNELS.SALARY
+        );
 
         if (!salaryChannel) return;
 
@@ -420,7 +450,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 embeds: [embed]
             });
 
-            // 🧹 DELETE AUDIT MESSAGE
             try {
                 await i.message.delete();
             } catch {}
