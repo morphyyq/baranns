@@ -167,6 +167,9 @@ client.on(Events.MessageCreate, async (msg) => {
         if (!config) return;
 
 
+        // =================================================
+        // BALANCE
+        // =================================================
         if (msg.content === "/balance") {
 
             return msg.reply({
@@ -175,6 +178,9 @@ client.on(Events.MessageCreate, async (msg) => {
         }
 
 
+        // =================================================
+        // SCREEN SYSTEM
+        // =================================================
         if (msg.channel.id !== config.CHANNELS.SCREEN) return;
 
         if (lockMessage(msg.id)) return;
@@ -193,7 +199,9 @@ client.on(Events.MessageCreate, async (msg) => {
 
         const file = new AttachmentBuilder(
             att.url,
-            { name: att.name || "screen.png" }
+            {
+                name: att.name || "screen.png"
+            }
         );
 
         const embed = new EmbedBuilder()
@@ -228,11 +236,15 @@ client.on(Events.MessageCreate, async (msg) => {
 
             try {
                 await msg.delete();
-            } catch {}
+            }
+
+            catch {}
 
         }, 10000);
 
-    } catch (e) {
+    }
+
+    catch (e) {
 
         console.log("[MESSAGE ERROR]", e);
     }
@@ -253,7 +265,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
 
         // =================================================
-        // PANEL
+        // /PANEL
         // =================================================
         if (
             i.isChatInputCommand() &&
@@ -284,30 +296,36 @@ client.on(Events.InteractionCreate, async (i) => {
 
 ### ⚠️ Важно ознакомиться перед подачей заявки ###
 
-• Заявки, оформленные без соблюдения правил отклоняются.
+• Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
 
 • Мы не принимаем детей, фриков и неадекватных людей.
 
-• Заявки строго по очереди.
+• Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
 
-• КД на повторную подачу — 2 дня.
+• У нас нет отдельных мест только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
 
-📌 Перед подачей заявки убедитесь, что Discord открыт`
+• Если заявка была отклонена — это окончательное решение.
+
+• КД на повторную подачу заявки — **2 дня**.
+
+**📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.**`
                 )
                 .setColor("#2b2d31");
 
-            // ===== FIX UI =====
             const menu = new ActionRowBuilder().addComponents(
+
                 new StringSelectMenuBuilder()
                     .setCustomId("apply_menu")
                     .setPlaceholder("Выберите тип заявки")
                     .addOptions(
+
                         {
                             label: "Academy",
                             description: "Ник, статик, имя/возраст, онлайн, семья",
                             value: "academy",
                             emoji: "🎓"
                         },
+
                         {
                             label: "Capture",
                             description: "Ник, статик, имя/возраст, онлайн, семья, откаты",
@@ -341,44 +359,55 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const modal = new ModalBuilder()
                 .setCustomId(`apply_modal_${type}`)
-                .setTitle(type === "academy" ? "Academy" : "Capture");
+                .setTitle(
+                    type === "academy"
+                        ? "Academy"
+                        : "Capture"
+                );
 
             const fields = [
+
                 {
                     id: "q1",
                     label: "Ник | Имя | Статик | Возраст",
                     placeholder: "Hugo | Женя | 21074 | 20",
                     style: TextInputStyle.Short
                 },
+
                 {
                     id: "q2",
                     label: "Средний онлайн в день",
-                    placeholder: "4-6 часов",
+                    placeholder: "Например: 4-6 часов",
                     style: TextInputStyle.Short
                 },
+
                 {
                     id: "q3",
                     label: "В каких семьях были и почему ушли?",
-                    placeholder: "Перечислите семьи",
+                    placeholder: "Перечислите семьи и почему ушли",
                     style: TextInputStyle.Paragraph
                 },
+
                 {
                     id: "q4",
                     label: type === "academy"
                         ? "Как узнали о нас?"
-                        : "Предоставьте откаты",
+                        : "Предоставьте свои откаты",
 
                     placeholder: type === "academy"
-                        ? "на респе баллас"
-                        : "Откат GG 5 минут",
+                        ? "Например: на респе баллас"
+                        : "Откат с ГГ от 5 минут Тяга (спешик)",
 
                     style: TextInputStyle.Paragraph
                 }
             ];
 
             modal.addComponents(
+
                 ...fields.map(f =>
+
                     new ActionRowBuilder().addComponents(
+
                         new TextInputBuilder()
                             .setCustomId(f.id)
                             .setLabel(f.label)
@@ -400,7 +429,10 @@ client.on(Events.InteractionCreate, async (i) => {
             i.customId.startsWith("apply_modal_")
         ) {
 
-            const type = i.customId.replace("apply_modal_", "");
+            const type = i.customId.replace(
+                "apply_modal_",
+                ""
+            );
 
             const nick = i.fields.getTextInputValue("q1");
 
@@ -424,37 +456,77 @@ client.on(Events.InteractionCreate, async (i) => {
                 parent: config.CHANNELS.CATEGORY,
 
                 permissionOverwrites: [
-                    { id: i.guild.id, deny: ["ViewChannel"] },
-                    { id: i.user.id, allow: ["ViewChannel", "SendMessages"] }
+
+                    {
+                        id: i.guild.id,
+                        deny: ["ViewChannel"]
+                    },
+
+                    {
+                        id: i.user.id,
+                        allow: [
+                            "ViewChannel",
+                            "SendMessages"
+                        ]
+                    },
+
+                    ...config.ALLOWED_ROLES.map(role => ({
+                        id: role,
+                        allow: [
+                            "ViewChannel",
+                            "SendMessages"
+                        ]
+                    }))
                 ]
             });
 
             const embed = new EmbedBuilder()
-                .setTitle(type === "academy" ? "🎓 Academy" : "⚔️ Capture")
+                .setTitle(
+                    type === "academy"
+                        ? "🎓 Academy"
+                        : "⚔️ Capture"
+                )
                 .setDescription(
 `**Ник | Имя | Статик | Возраст**
 ${data.q1}
 
-**Онлайн**
+**Средний онлайн**
 ${data.q2}
 
 **Семьи**
 ${data.q3}
 
 **${type === "academy"
-? "Как узнали"
+? "Как узнали о нас?"
 : "Откаты"}**
 ${data.q4}
 
-Пользователь: <@${i.user.id}>`
+Пользователь: <@${i.user.id}>
+Username: ${i.user.tag}`
                 )
                 .setColor("#2b2d31");
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`acc_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId(`rev_${i.user.id}`).setLabel("Рассмотрение").setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`call_${i.user.id}`).setLabel("Обзвон").setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId(`rej_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
+
+                new ButtonBuilder()
+                    .setCustomId(`app_accept_${i.user.id}`)
+                    .setLabel("Принять")
+                    .setStyle(ButtonStyle.Success),
+
+                new ButtonBuilder()
+                    .setCustomId(`app_review_${i.user.id}`)
+                    .setLabel("Взять на рассмотрение")
+                    .setStyle(ButtonStyle.Primary),
+
+                new ButtonBuilder()
+                    .setCustomId(`app_call_${i.user.id}`)
+                    .setLabel("Вызвать на обзвон")
+                    .setStyle(ButtonStyle.Secondary),
+
+                new ButtonBuilder()
+                    .setCustomId(`app_reject_${i.user.id}`)
+                    .setLabel("Отклонить")
+                    .setStyle(ButtonStyle.Danger)
             );
 
             await channel.send({
@@ -468,7 +540,9 @@ ${data.q4}
             });
         }
 
-    } catch (e) {
+    }
+
+    catch (e) {
 
         console.log("[INTERACTION ERROR]", e);
     }
