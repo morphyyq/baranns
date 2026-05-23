@@ -449,7 +449,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             const channel = await i.guild.channels.create({
 
-                name: `заявление-${nick.split("|")[0].trim().toLowerCase()}`,
+                name: `заявление-${nick.split("|")[0].trim().toLowerCase()}-${i.user.username}`,
 
                 type: ChannelType.GuildText,
 
@@ -502,7 +502,6 @@ ${data.q3}
 ${data.q4}
 
 Пользователь: <@${i.user.id}>
-Username: ${i.user.tag}`
                 )
                 .setColor("#2b2d31");
 
