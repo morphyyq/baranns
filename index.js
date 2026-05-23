@@ -118,7 +118,7 @@ let salary = loadDB();
 // =====================================================
 const processed = new Set();
 const applications = new Map();
-const modalLocks = new Set(); // Замок против двойных тикетов при лагах клика
+const modalLocks = new Set();
 
 function lockMessage(id) {
     if (processed.has(id)) return true;
@@ -314,14 +314,30 @@ client.on(Events.InteractionCreate, async (i) => {
 
         // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
-            // ИЗМЕНЕНИЕ: Если этот пользователь уже отправлял модалку за последние 5 секунд — игнорируем дубликат
-            if (modalLocks.has(i.user.id)) {
-                return console.log(`[ANTI-SPAM] Заблокирован дубликат создания тикета от ${i.user.tag}`);
-            }
+            if (modalLocks.has(i.user.id)) return;
             modalLocks.add(i.user.id);
-            setTimeout(() => modalLocks.delete(i.user.id), 5000); // Разлочим через 5 секунд
+            setTimeout(() => modalLocks.delete(i.user.id), 5000);
 
             const type = i.customId.replace("apply_modal_", "");
+
+            // СТРАХОВКА: Формируем точное имя канала, как его сделает Discord
+            const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+
+            // Обновляем кэш каналов сервера, чтобы увидеть действия второго бота (если он есть)
+            await i.guild.channels.fetch().catch(() => null);
+
+            // Проверяем, существует ли уже такой канал в нашей категории
+            const existingChannel = i.guild.channels.cache.find(c => 
+                c.parentId === config.CHANNELS.CATEGORY && 
+                c.name === expectedChannelName
+            );
+
+            if (existingChannel) {
+                // Если канал уже есть, просто отправляем пользователю ссылку на него и выходим
+                await i.reply({ content: `⚠️ Ваша заявка уже создана или находится в процессе создания: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
+                return;
+            }
+
             const data = {
                 type,
                 q1: i.fields.getTextInputValue("q1"),
@@ -335,7 +351,7 @@ client.on(Events.InteractionCreate, async (i) => {
             applications.set(i.user.id, data);
 
             const channel = await i.guild.channels.create({
-                name: `${type}-${i.user.username.toLowerCase()}`,
+                name: expectedChannelName,
                 type: ChannelType.GuildText,
                 parent: config.CHANNELS.CATEGORY,
                 permissionOverwrites: [
@@ -408,7 +424,7 @@ ${data.q4}`;
             const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
             if (targetMember) {
                 await targetMember.send({
-                    content: `🔔 **Привет!** Твоя заявка в семью **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовому народу по прямой ссылке:\n${voiceUrl}`
+                    content: `🔔 **Привет!** Твоя заявка в семью **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовому каналу по прямой ссылке:\n${voiceUrl}`
                 }).catch(() => {
                     i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
                 });
@@ -487,7 +503,7 @@ ${data.q4}`;
                     );
 
                     await i.reply({
-                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
+                        content: "⬇ Internet-выпадающий список ниже войс-канал, в который отправить кандидата:",
                         components: [voiceMenu],
                         ephemeral: true
                     });
