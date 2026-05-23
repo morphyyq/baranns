@@ -23,9 +23,7 @@ const {
 // =====================================================
 const app = express();
 
-app.get("/", (_, res) => {
-    res.send("Bot Alive");
-});
+app.get("/", (_, res) => res.send("Bot Alive"));
 
 app.listen(process.env.PORT || 3000, () => {
     console.log("[WEB] SERVER STARTED");
@@ -89,7 +87,7 @@ let salary = loadDB();
 
 
 // =====================================================
-// 🔒 HARD ANTI-DUPLICATE LOCK
+// 🔒 ANTI DUPLICATE LOCK
 // =====================================================
 const processed = new Set();
 
@@ -97,27 +95,16 @@ function lockMessage(id) {
     if (processed.has(id)) return true;
     processed.add(id);
 
-    // очищаем через 2 минуты (безопасно)
     setTimeout(() => processed.delete(id), 120000);
-
     return false;
 }
 
 
 // =====================================================
-// 🛡 ANTI CRASH
+// 🛡 ERROR HANDLERS
 // =====================================================
-process.on("unhandledRejection", (err) => {
-    console.log("[UNHANDLED]", err?.message || err);
-});
-
-process.on("uncaughtException", (err) => {
-    console.log("[CRASH]", err?.message || err);
-});
-
-process.on("uncaughtExceptionMonitor", (err) => {
-    console.log("[MONITOR]", err?.message || err);
-});
+process.on("unhandledRejection", e => console.log("[UNHANDLED]", e));
+process.on("uncaughtException", e => console.log("[CRASH]", e));
 
 
 // =====================================================
@@ -129,17 +116,15 @@ client.once(Events.ClientReady, () => {
 
 
 // =====================================================
-// 📸 SCREEN SYSTEM (FIXED)
+// 📸 SCREEN SYSTEM
 // =====================================================
 client.on(Events.MessageCreate, async (msg) => {
     try {
 
-        if (!msg || !msg.author) return;
-        if (msg.author.bot) return;
-
+        if (!msg?.author || msg.author.bot) return;
         if (msg.channel.id !== CHANNELS.SCREEN) return;
 
-        // 🔒 LOCK FIRST (CRITICAL FIX)
+        // 🔒 LOCK FIRST
         if (lockMessage(msg.id)) return;
 
         // 📎 ONLY ONE IMAGE
@@ -158,7 +143,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
         const embed = new EmbedBuilder()
             .setTitle("📸 Новый отчёт")
-            .setDescription(`👤 Рекрут: <@${msg.author.id}>\n\n📎 Скриншот`)
+            .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
             .setColor("Blue")
             .setFooter({ text: `ID: ${msg.author.id}` })
             .setTimestamp();
@@ -175,15 +160,14 @@ client.on(Events.MessageCreate, async (msg) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
-        await audit.send({
+        const auditMsg = await audit.send({
             embeds: [embed],
             files: [file],
             components: [row]
         });
 
-        setTimeout(() => {
-            msg.delete().catch(() => {});
-        }, 10000);
+        // 💀 delete original after 10 sec
+        setTimeout(() => msg.delete().catch(() => {}), 10000);
 
     } catch (e) {
         console.log("[SCREEN ERROR]", e);
@@ -263,7 +247,7 @@ client.on(Events.InteractionCreate, async (i) => {
             clearInterval(progress);
 
             return i.editReply(
-                `✅ Готово\n\n📨 ${users.length}\n✅ ${sent}\n❌ ${failed}`
+                `✅ Готово\n📨 ${users.length}\n✅ ${sent}\n❌ ${failed}`
             );
         }
 
@@ -273,28 +257,31 @@ client.on(Events.InteractionCreate, async (i) => {
         // =================================================
         if (!i.isButton()) return;
 
-        const [action, id] = i.customId.split("_");
+        const [action, userId] = i.customId.split("_");
 
         const salaryChannel = await client.channels.fetch(CHANNELS.SALARY);
         if (!salaryChannel) return;
 
+        // =================================================
+        // ✅ ACCEPT
+        // =================================================
         if (action === "accept") {
 
-            salary[id] = (salary[id] || 0) + 10000;
+            salary[userId] = (salary[userId] || 0) + 10000;
             saveDB(salary);
 
             const embed = new EmbedBuilder()
                 .setTitle("💰 Зарплата выдана")
-                .setDescription(`👤 <@${id}>`)
+                .setDescription(`👤 <@${userId}>`)
                 .addFields(
                     { name: "💵 +10000", value: "Выдано", inline: true },
-                    { name: "📊 Баланс", value: `${salary[id]}`, inline: true }
+                    { name: "📊 Баланс", value: `${salary[userId]}`, inline: true }
                 )
                 .setColor("Green")
                 .setTimestamp();
 
             await i.update({
-                content: `✅ Выдано <@${id}>`,
+                content: `✅ Выдано <@${userId}>`,
                 embeds: [],
                 components: []
             });
@@ -302,7 +289,11 @@ client.on(Events.InteractionCreate, async (i) => {
             await salaryChannel.send({ embeds: [embed] });
         }
 
+        // =================================================
+        // ❌ REJECT
+        // =================================================
         if (action === "reject") {
+
             await i.update({
                 content: "❌ Отклонено",
                 embeds: [],
