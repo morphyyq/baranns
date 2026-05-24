@@ -76,7 +76,8 @@ const SERVERS = {
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417",
-            MONITOR: "1507787906700415076" // Канал для постоянного мониторинга онлайна
+            MONITOR: "1507787906700415076", // Канал для постоянного мониторинга онлайна
+            SBOR: "1458481307351781709" // Канал сбора Darkness
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -99,23 +100,23 @@ const SERVERS = {
             { id: "1468704257606684712", name: "Рекруты" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1507798049416675531", name: "RP Состав" }
+        ],
+        PING_ROLES: [ // Роли для пинга при сборе
+            "1458410756453306490"
+        ]
+    },
+    // НОВЫЙ СЕРВЕР BALLAS
+    "1504470399268819115": {
+        CHANNELS: {
+            SBOR: "1504574610564321290" // Канал сбора Ballas
+        },
+        PING_ROLES: [ // Роли баллас
+            "1504470450305241288", 
+            "1505558808766971944"
         ]
     }
 };
 
-// Конфигурация для новой системы сборов
-const GATHER_CONFIG = {
-    BALLAS: {
-        GUILD_ID: "1504470399268819115",
-        CHANNEL_ID: "1504574610564321290",
-        ROLES: ["1504470450305241288", "1505558808766971944"]
-    },
-    FAMILY: {
-        GUILD_ID: "1458190222042075251",
-        CHANNEL_ID: "1458481307351781709",
-        ROLES: ["1458410756453306490"]
-    }
-};
 
 // =====================================================
 // DATABASE
@@ -143,6 +144,7 @@ let salary = loadDB();
 const processed = new Set();
 const applications = new Map();
 const modalLocks = new Set();
+const groupSessions = new Map(); // Хранилище для системы сборов
 
 
 // =====================================================
@@ -151,7 +153,7 @@ const modalLocks = new Set();
 async function updateOnlineMonitor() {
     try {
         for (const [guildId, config] of Object.entries(SERVERS)) {
-            if (!config.CHANNELS.MONITOR) continue;
+            if (!config.CHANNELS || !config.CHANNELS.MONITOR) continue;
 
             const guild = await client.guilds.fetch(guildId).catch(() => null);
             if (!guild) continue;
@@ -223,65 +225,61 @@ async function updateOnlineMonitor() {
     }
 }
 
+
 // =====================================================
-// МАССОВАЯ РАССЫЛКА ДЛЯ СБОРОВ
+// СИСТЕМА ОПОВЕЩЕНИЯ (МАССОВЫЙ СБОР)
 // =====================================================
-async function startMassPing(faction, eventName, code) {
-    const config = faction === "ballas" ? GATHER_CONFIG.BALLAS : GATHER_CONFIG.FAMILY;
+async function startMassNotification(guildId, activity, groupCode) {
+    const config = SERVERS[guildId];
+    if (!config) return;
+
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) return;
+
+    const channel = await guild.channels.fetch(config.CHANNELS.SBOR).catch(() => null);
+    if (!channel) return;
+
+    const pingString = `@everyone ${config.PING_ROLES.map(r => `<@&${r}>`).join(" ")}`;
+    const messageContent = `${pingString}\n\n## Сбор на ${activity}, всем быть, кого не будет = 2 варна. Группа: ${groupCode} ##`;
+
+    let cycles = 0;
     
-    try {
-        const guild = await client.guilds.fetch(config.GUILD_ID);
-        if (!guild) return console.log(`[GATHER] Сервер ${config.GUILD_ID} не найден`);
+    const executeSpam = async () => {
+        cycles++;
         
-        const channel = await guild.channels.fetch(config.CHANNEL_ID);
-        if (!channel) return console.log(`[GATHER] Канал ${config.CHANNEL_ID} не найден`);
-
-        const roleTags = config.ROLES.map(roleId => `<@&${roleId}>`).join(" ");
-        const messageText = `@everyone ${roleTags}\n\n## Сбор на ${eventName}, всем быть, кого не будет = 2 варна. Группа: ${code} ##`;
-
-        // Кэшируем участников для отправки в ЛС
-        await guild.members.fetch();
-        const membersToDM = new Set();
-        
-        config.ROLES.forEach(roleId => {
-            const role = guild.roles.cache.get(roleId);
-            if (role) {
-                role.members.forEach(member => {
-                    if (!member.user.bot) membersToDM.add(member.id);
-                });
+        // 1. Отправляем 3 раза в канал сбора
+        try {
+            for (let i = 0; i < 3; i++) {
+                await channel.send(messageContent).catch(() => null);
             }
-        });
+        } catch (e) {
+            console.error("Ошибка отправки сбора в канал:", e);
+        }
 
-        // Функция отправки одного круга
-        const executeRound = async () => {
-            // Отправляем в канал
-            await channel.send(messageText).catch(() => null);
-            
-            // Отправляем в ЛС
-            for (const userId of Array.from(membersToDM)) {
-                const member = guild.members.cache.get(userId);
-                if (member) {
-                    member.send(messageText).catch(() => null);
-                }
+        // 2. Отправляем 1 раз в ЛС всем нужным ролям
+        try {
+            await guild.members.fetch();
+            const targetMembers = guild.members.cache.filter(m => 
+                config.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot
+            );
+
+            for (const [id, member] of targetMembers) {
+                await member.send(`🔔 **Внимание!**\n${messageContent}`).catch(() => null);
             }
-        };
+        } catch (e) {
+            console.error("Ошибка рассылки в ЛС:", e);
+        }
 
-        // Запуск первого круга моментально
-        await executeRound();
+        // Останавливаем после 3 циклов
+        if (cycles >= 3) {
+            clearInterval(spamInterval);
+        }
+    };
 
-        // Круг 2 через 5 минут
-        setTimeout(async () => {
-            await executeRound();
-        }, 5 * 60 * 1000); // 5 минут
-
-        // Круг 3 через 10 минут
-        setTimeout(async () => {
-            await executeRound();
-        }, 10 * 60 * 1000); // 10 минут
-
-    } catch (err) {
-        console.error(`[GATHER ERROR]`, err);
-    }
+    // Выполняем первый раз сразу
+    executeSpam();
+    // И повторяем каждые 5 минут (300000 миллисекунд)
+    const spamInterval = setInterval(executeSpam, 300000);
 }
 
 
@@ -294,18 +292,20 @@ client.once(Events.ClientReady, async () => {
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
-        new SlashCommandBuilder().setName("group_panel").setDescription("Отправить панель управления сборами групп") // НОВАЯ КОМАНДА
+        // НОВАЯ КОМАНДА
+        new SlashCommandBuilder().setName("group_panel").setDescription("Отправить панель управления сборами")
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
     try {
         console.log(`[BOT] [${INSTANCE_ID}] Начало обновления слэш-команд...`);
-        // Регистрируем глобально, чтобы работало и в канале "групп" и на сервере Баллас
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: commands }
-        );
+        for (const guildId of Object.keys(SERVERS)) {
+            await rest.put(
+                Routes.applicationGuildCommands(client.user.id, guildId),
+                { body: commands }
+            );
+        }
         console.log(`[BOT] [${INSTANCE_ID}] Слэш-команды успешно зарегистрированы!`);
     } catch (e) {
         console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
@@ -338,7 +338,7 @@ client.on(Events.MessageCreate, async (msg) => {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
 
-            const hasPermission = config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
+            const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
             if (!hasPermission) return;
 
             const channelMessages = await msg.channel.messages.fetch({ limit: 50 });
@@ -374,47 +374,47 @@ client.on(Events.MessageCreate, async (msg) => {
         }
 
         // SCREEN SYSTEM (Для обычных отчетов рекрутов)
-        if (msg.channel.id !== config.CHANNELS.SCREEN) return;
-        
-        if (processed.has(msg.id)) return;
-        processed.add(msg.id);
-        setTimeout(() => { processed.delete(msg.id); }, 120000);
+        if (config.CHANNELS && msg.channel.id === config.CHANNELS.SCREEN) {
+            if (processed.has(msg.id)) return;
+            processed.add(msg.id);
+            setTimeout(() => { processed.delete(msg.id); }, 120000);
 
-        const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-        if (!att) return;
+            const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
+            if (!att) return;
 
-        const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
-        if (!audit) return;
+            const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
+            if (!audit) return;
 
-        const file = new AttachmentBuilder(att.url, { name: att.name || "screen.png" });
+            const file = new AttachmentBuilder(att.url, { name: att.name || "screen.png" });
 
-        const embed = new EmbedBuilder()
-            .setTitle("📸 Новый отчёт")
-            .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
-            .setImage(`attachment://${file.name}`)
-            .setColor("Blue")
-            .setTimestamp();
+            const embed = new EmbedBuilder()
+                .setTitle("📸 Новый отчёт")
+                .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
+                .setImage(`attachment://${file.name}`)
+                .setColor("Blue")
+                .setTimestamp();
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`accept_${msg.author.id}`)
-                .setLabel("Принять")
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId(`reject_${msg.author.id}`)
-                .setLabel("Отклонить")
-                .setStyle(ButtonStyle.Danger)
-        );
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`accept_${msg.author.id}`)
+                    .setLabel("Принять")
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`reject_${msg.author.id}`)
+                    .setLabel("Отклонить")
+                    .setStyle(ButtonStyle.Danger)
+            );
 
-        await audit.send({
-            embeds: [embed],
-            files: [file],
-            components: [row]
-        });
+            await audit.send({
+                embeds: [embed],
+                files: [file],
+                components: [row]
+            });
 
-        setTimeout(async () => {
-            try { await msg.delete(); } catch {}
-        }, 10000);
+            setTimeout(async () => {
+                try { await msg.delete(); } catch {}
+            }, 10000);
+        }
 
     } catch (e) {
         console.log(`[MESSAGE ERROR] [${INSTANCE_ID}]`, e);
@@ -429,16 +429,17 @@ client.on(Events.InteractionCreate, async (i) => {
     try {
         if (!i.guild) return;
 
-        const config = SERVERS[i.guild.id];
-
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
-            if (i.commandName === "balance" && config) {
+            const config = SERVERS[i.guild.id];
+            
+            if (i.commandName === "balance") {
                 await i.reply({ content: `💰 Баланс: ${salary[i.user.id] || 0}`, ephemeral: true });
                 return;
             }
 
-            if (i.commandName === "panel" && config) {
+            if (i.commandName === "panel") {
+                if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 const embed = new EmbedBuilder()
                     .setTitle("🚀 Заявки в семью Darkness")
@@ -486,115 +487,132 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            // НОВАЯ КОМАНДА: ПАНЕЛЬ СБОРОВ
+            // НОВАЯ ПАНЕЛЬ СБОРОВ (Будет отправлена в канал групп)
             if (i.commandName === "group_panel") {
-                const gatherEmbed = new EmbedBuilder()
-                    .setTitle("📡 Управление сборами групп")
-                    .setDescription("Используйте кнопки ниже для запуска массового оповещения состава.\n\n**Функционал:**\n• 3 сообщения в канал сбора\n• 3 рассылки в ЛС (раз в 5 минут)\n• Упоминание всех причастных ролей\n\n**Darkness & Ballas Central Control**")
+                // Ты просил отправить это в канал 1508112178610438327
+                const channel = await client.channels.fetch("1508112178610438327").catch(() => null);
+                if (!channel) {
+                    await i.reply({ content: "❌ Канал 'групп' не найден или у бота нет туда доступа.", ephemeral: true });
+                    return;
+                }
+
+                const embed = new EmbedBuilder()
+                    .setTitle("📡 Управление сборами")
+                    .setDescription("Выберите фракцию, от которой необходимо запустить сбор.")
                     .setColor("#2b2d31");
 
-                const gatherButtons = new ActionRowBuilder().addComponents(
+                const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
-                        .setCustomId("gather_btn_ballas")
-                        .setLabel("Ballas Gang")
-                        .setEmoji("🍇")
-                        .setStyle(ButtonStyle.Danger),
+                        .setCustomId("group_start_ballas")
+                        .setLabel("От Ballas Gang")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji("🍇"),
                     new ButtonBuilder()
-                        .setCustomId("gather_btn_family")
-                        .setLabel("Darkness Family")
-                        .setEmoji("🌑")
+                        .setCustomId("group_start_darkness")
+                        .setLabel("От Darkness Family")
                         .setStyle(ButtonStyle.Primary)
+                        .setEmoji("🌑")
                 );
 
-                await i.channel.send({ embeds: [gatherEmbed], components: [gatherButtons] });
-                await i.reply({ content: "✅ Панель сборов отправлена", ephemeral: true });
+                await channel.send({ embeds: [embed], components: [row] });
+                await i.reply({ content: "✅ Панель сборов отправлена!", ephemeral: true });
                 return;
             }
         }
 
-        // ==========================================
-        // ИНТЕРАКЦИИ НОВОЙ СИСТЕМЫ СБОРОВ
-        // ==========================================
-
-        // КНОПКИ ВЫБОРА ФРАКЦИИ
-        if (i.isButton() && i.customId.startsWith("gather_btn_")) {
-            const faction = i.customId.replace("gather_btn_", ""); // 'ballas' или 'family'
-            let options = [];
+        // =====================================================
+        // ОБРАБОТКА НОВОЙ СИСТЕМЫ СБОРОВ
+        // =====================================================
+        
+        // 1. Выбор фракции (кнопки в панели сборов)
+        if (i.isButton() && i.customId.startsWith("group_start_")) {
+            const faction = i.customId.replace("group_start_", ""); // ballas или darkness
             
-            if (faction === "ballas") {
-                options = ["цеха", "диллеры", "остров", "поставки", "фз", "контент", "банк", "дроп"].map(opt => ({
-                    label: opt.charAt(0).toUpperCase() + opt.slice(1),
-                    value: opt
-                }));
-            } else if (faction === "family") {
-                options = ["капты", "контент", "арену", "тайники"].map(opt => ({
-                    label: opt.charAt(0).toUpperCase() + opt.slice(1),
-                    value: opt
-                }));
-            }
-
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
-                    .setCustomId(`gather_menu_${faction}`)
-                    .setPlaceholder(`Выберите тип сбора (${faction.toUpperCase()})`)
-                    .addOptions(options)
+                    .setCustomId(`group_select_${faction}`)
+                    .setPlaceholder("Выберите тип мероприятия")
             );
 
-            await i.reply({ 
-                content: `Выберите на что вы хотите объявить сбор от **${faction.toUpperCase()}**:`,
-                components: [menu], 
-                ephemeral: true 
-            });
+            if (faction === "ballas") {
+                menu.components[0].addOptions(
+                    { label: "Цеха", value: "цеха" }, { label: "Диллеры", value: "диллеры" },
+                    { label: "Остров", value: "остров" }, { label: "Поставки", value: "поставки" },
+                    { label: "ФЗ", value: "фз" }, { label: "Контент", value: "контент" },
+                    { label: "Банк", value: "банк" }, { label: "Дроп", value: "дроп" }
+                );
+            } else {
+                menu.components[0].addOptions(
+                    { label: "Капты", value: "капты" }, { label: "Контент", value: "контент" },
+                    { label: "Арену", value: "арену" }, { label: "Тайники", value: "тайники" }
+                );
+            }
+
+            await i.reply({ content: "Выберите тип сбора из списка ниже:", components: [menu], ephemeral: true });
             return;
         }
 
-        // МЕНЮ ВЫБОРА ТИПА СБОРА -> ОТКРЫТИЕ МОДАЛКИ ДЛЯ ВВОДА КОДА
-        if (i.isStringSelectMenu() && i.customId.startsWith("gather_menu_")) {
-            const faction = i.customId.replace("gather_menu_", "");
-            const eventType = i.values[0];
+        // 2. Выбор мероприятия (выпадающее меню сборов)
+        if (i.isStringSelectMenu() && i.customId.startsWith("group_select_")) {
+            const faction = i.customId.replace("group_select_", "");
+            const activity = i.values[0];
+
+            // Сохраняем промежуточный выбор пользователя
+            groupSessions.set(i.user.id, { faction, activity });
 
             const modal = new ModalBuilder()
-                .setCustomId(`gather_modal_${faction}_${eventType}`)
+                .setCustomId("group_modal_code")
                 .setTitle("Код группы");
 
             const codeInput = new TextInputBuilder()
-                .setCustomId("group_code")
-                .setLabel("Введите код группы (5 символов)")
-                .setStyle(TextInputStyle.Short)
+                .setCustomId("group_code_input")
+                .setLabel("Введите код группы из 5 символов")
+                .setPlaceholder("Например: YFKVQ")
+                .setMinLength(5)
+                .setMaxLength(5)
                 .setRequired(true)
-                .setMinLength(2)
-                .setMaxLength(10)
-                .setPlaceholder("Например: YFKVQ");
+                .setStyle(TextInputStyle.Short);
 
             modal.addComponents(new ActionRowBuilder().addComponents(codeInput));
             await i.showModal(modal);
             return;
         }
 
-        // САБМИТ МОДАЛКИ СБОРА -> ЗАПУСК РАССЫЛКИ
-        if (i.isModalSubmit() && i.customId.startsWith("gather_modal_")) {
-            const parts = i.customId.split("_");
-            const faction = parts[2];
-            const eventType = parts[3];
-            const code = i.fields.getTextInputValue("group_code").toUpperCase();
+        // 3. Обработка модалки с кодом группы
+        if (i.isModalSubmit() && i.customId === "group_modal_code") {
+            const session = groupSessions.get(i.user.id);
+            if (!session) {
+                await i.reply({ content: "❌ Ошибка сессии. Попробуйте нажать кнопку выбора заново.", ephemeral: true });
+                return;
+            }
+
+            const code = i.fields.getTextInputValue("group_code_input").toUpperCase();
+            
+            // Определяем ID сервера в зависимости от фракции
+            const guildId = session.faction === "ballas" ? "1504470399268819115" : "1458190222042075251";
 
             await i.reply({ 
-                content: `✅ Массовое оповещение успешно запущено!\nФракция: **${faction.toUpperCase()}**\nТип сбора: **${eventType}**\nКод: **${code}**\n\nРассылка (в канал и ЛС участникам) пройдет 3 раза с интервалом в 5 минут.`, 
+                content: `✅ Запущено оповещение для **${session.faction}** на **${session.activity}**. Код группы: **${code}**.\n\nБот отправит по 3 сообщения в канал и 1 в ЛС сейчас, а также повторит это через 5 и 10 минут.`, 
                 ephemeral: true 
             });
-
-            // Запуск функции (асинхронно, чтобы не задерживать ответ)
-            startMassPing(faction, eventType, code);
+            
+            // Запускаем рассылку
+            startMassNotification(guildId, session.activity, code);
+            
+            // Очищаем сессию
+            groupSessions.delete(i.user.id);
             return;
         }
 
-        // ==========================================
-        // ИНТЕРАКЦИИ ЗАЯВОК И ОТЧЕТОВ (ИЗ ОРИГИНАЛА)
-        // ==========================================
-        
+
+        // =====================================================
+        // СТАРАЯ СИСТЕМА ЗАЯВОК И ОСТАЛЬНОЕ (НЕ ТРОНУТО)
+        // =====================================================
+
+        const config = SERVERS[i.guild.id];
         if (!config) return;
 
-        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ ЗАЯВОК)
+        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -678,7 +696,17 @@ client.on(Events.InteractionCreate, async (i) => {
             const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
             const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**\n${data.q1}\n\n**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**\n${data.q2}\n\n**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**\n${data.q3}\n\n**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**\n${data.q4}`;
+            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
+${data.q1}
+
+**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
+${data.q2}
+
+**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
+${data.q3}
+
+**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
+${data.q4}`;
 
             if (type !== "academy") {
                 embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
@@ -743,7 +771,11 @@ client.on(Events.InteractionCreate, async (i) => {
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
 
-            const hasPermission = config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+            const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+            
+            // Исключения: Кнопки выбора фракции для сбора (у них нет проверки на config.ALLOWED_ROLES, так как они в другом канале)
+            if (parts[0] === "group" && parts[1] === "start") return;
+
             if (!hasPermission) {
                 await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
                 return;
