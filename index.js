@@ -67,6 +67,54 @@ client.on(Events.Error, (error) => {
 // =====================================================
 // CONFIG
 // =====================================================
+const FAMILY_GUILD_ID = "1458190222042075251";
+const BALLAS_GUILD_ID = "1504470399268819115";
+
+const GROUP_PANEL_CHANNEL_ID = "1508112178610438327";
+const FAMILY_GATHER_CHANNEL_ID = "1458481307351781709";
+const BALLAS_GATHER_CHANNEL_ID = "1504574610564321290";
+
+const BALLAS_GROUP_ROLES = [
+    "1504470450305241288",
+    "1505558808766971944"
+];
+
+const FAMILY_GROUP_TYPES = {
+    capty: "капты",
+    content: "контент",
+    arena: "арену",
+    caches: "тайники"
+};
+
+const BALLAS_GROUP_TYPES = {
+    workshops: "цеха",
+    dealers: "диллеры",
+    island: "остров",
+    deliveries: "поставки",
+    fz: "фз",
+    content: "контент",
+    bank: "банк",
+    drop: "дроп"
+};
+
+const GROUP_TARGETS = {
+    family: {
+        guildId: FAMILY_GUILD_ID,
+        invite: "https://discord.gg/Xc4zwGhfy",
+        channelId: FAMILY_GATHER_CHANNEL_ID,
+        roleIds: []
+    },
+    ballas: {
+        guildId: BALLAS_GUILD_ID,
+        invite: "https://discord.gg/RqbWDV9ds",
+        channelId: BALLAS_GATHER_CHANNEL_ID,
+        roleIds: BALLAS_GROUP_ROLES
+    }
+};
+
+const GROUP_SEND_COUNT = 3;
+const GROUP_SEND_INTERVAL_MS = 5 * 60 * 1000;
+
 const SERVERS = {
     "1458190222042075251": {
         CHANNELS: {
@@ -76,9 +124,7 @@ const SERVERS = {
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417",
-            MONITOR: "1507787906700415076", // Канал для постоянного мониторинга онлайна
-            GROUP: "1508112178610438327",   // Канал с постоянным эмбедом для сборов
-            GATHER: "1458481307351781709"  // Канал "сбор" в семье
+            MONITOR: "1507787906700415076" // Канал для постоянного мониторинга онлайна
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -101,16 +147,6 @@ const SERVERS = {
             { id: "1468704257606684712", name: "Рекруты" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1507798049416675531", name: "RP Состав" }
-        ]
-    },
-    // Добавлен конфиг для Ballas
-    "1504470399268819115": {
-        CHANNELS: {
-            GATHER: "1504574610564321290"
-        },
-        PING_ROLES: [
-            "1504470450305241288",
-            "1505558808766971944"
         ]
     }
 };
@@ -145,12 +181,94 @@ const modalLocks = new Set();
 
 
 // =====================================================
+// GROUP SYSTEM
+// =====================================================
+function getGroupTypeLabel(source, type) {
+    const types = source === "family" ? FAMILY_GROUP_TYPES : BALLAS_GROUP_TYPES;
+    return types[type] || type;
+}
+
+function buildGroupMessage(source, type, code) {
+    const target = GROUP_TARGETS[source];
+    const roleMentions = target.roleIds.map(roleId => `<@&${roleId}>`).join(" ");
+    const mentions = ["@everyone", roleMentions].filter(Boolean).join(" ");
+    const groupType = getGroupTypeLabel(source, type);
+
+    return `${mentions}\n\nСбор на ${groupType}, всем быть, кого не будет = 2 варна. Группа: ${code} ##`;
+}
+
+function buildGroupAllowedMentions(source) {
+    const target = GROUP_TARGETS[source];
+
+    return {
+        parse: ["everyone"],
+        roles: target.roleIds
+    };
+}
+
+async function ensureGroupPanel() {
+    const channel = await client.channels.fetch(GROUP_PANEL_CHANNEL_ID).catch(() => null);
+    if (!channel) {
+        console.log(`[GROUP PANEL] [${INSTANCE_ID}] Канал групп не найден: ${GROUP_PANEL_CHANNEL_ID}`);
+        return;
+    }
+
+    const embed = new EmbedBuilder()
+        .setTitle("📣 Группы")
+        .setDescription("Выберите, от кого группать.")
+        .setColor("#2b2d31")
+        .setTimestamp();
+
+    const menu = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId("group_source")
+            .setPlaceholder("От кого группать")
+            .addOptions(
+                { label: "От баллас", value: "ballas" },
+                { label: "От семьи", value: "family" }
+            )
+    );
+
+    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title === "📣 Группы") : null;
+
+    if (botMessage) {
+        await botMessage.edit({ embeds: [embed], components: [menu] }).catch(() => null);
+    } else {
+        await channel.send({ embeds: [embed], components: [menu] }).catch(() => null);
+    }
+}
+
+async function sendGroupGather(source, type, code, user) {
+    const target = GROUP_TARGETS[source];
+    const guild = await client.guilds.fetch(target.guildId).catch(() => null);
+    if (!guild) throw new Error(`Сервер не найден: ${target.guildId}`);
+
+    const channel = await guild.channels.fetch(target.channelId).catch(() => null);
+    if (!channel) throw new Error(`Канал сбора не найден: ${target.channelId}`);
+
+    const content = buildGroupMessage(source, type, code);
+    const allowedMentions = buildGroupAllowedMentions(source);
+
+    for (let index = 0; index < GROUP_SEND_COUNT; index++) {
+        setTimeout(async () => {
+            await channel.send({ content, allowedMentions }).catch(error => {
+                console.error(`[GROUP SEND ERROR] [${INSTANCE_ID}]`, error);
+            });
+
+            await user.send({ content }).catch(() => null);
+        }, GROUP_SEND_INTERVAL_MS * index);
+    }
+}
+
+
+// =====================================================
 // MONITORING SYSTEM (Функция обновления онлайна)
 // =====================================================
 async function updateOnlineMonitor() {
     try {
         for (const [guildId, config] of Object.entries(SERVERS)) {
-            if (!config.CHANNELS || !config.CHANNELS.MONITOR) continue;
+            if (!config.CHANNELS.MONITOR) continue;
 
             const guild = await client.guilds.fetch(guildId).catch(() => null);
             if (!guild) continue;
@@ -224,107 +342,6 @@ async function updateOnlineMonitor() {
 
 
 // =====================================================
-// PANEL GROUP SYSTEM (Инициализация панели сбора)
-// =====================================================
-async function setupGroupPanel() {
-    try {
-        const familyConfig = SERVERS["1458190222042075251"];
-        const guild = await client.guilds.fetch("1458190222042075251").catch(() => null);
-        if (!guild) return;
-        
-        const channel = await guild.channels.fetch(familyConfig.CHANNELS.GROUP).catch(() => null);
-        if (!channel) return;
-
-        const messages = await channel.messages.fetch({ limit: 10 });
-        const botMsg = messages.find(m => m.author.id === client.user.id && m.embeds[0]?.title === "📢 Управление сборами");
-        
-        const embed = new EmbedBuilder()
-            .setTitle("📢 Управление сборами")
-            .setDescription("Выберите, от кого объявить сбор группы:")
-            .setColor("#2b2d31");
-
-        const menu = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId("group_base_select")
-                .setPlaceholder("Выберите фракцию или семью")
-                .addOptions([
-                    { label: "От баллас", value: "ballas", emoji: "🟣" },
-                    { label: "От семьи", value: "family", emoji: "🛡️" }
-                ])
-        );
-
-        if (!botMsg) {
-            await channel.send({ embeds: [embed], components: [menu] });
-        }
-    } catch (e) {
-        console.error(`[SETUP GROUP PANEL ERROR]`, e);
-    }
-}
-
-
-// =====================================================
-// START GATHERING SPAM LOGIC (Система спама для сборов)
-// =====================================================
-async function startGatheringSpam(base, targetType, code) {
-    try {
-        const familyGuildId = "1458190222042075251";
-        const ballasGuildId = "1504470399268819115";
-        
-        let guildId, gatherChannelId, pings;
-
-        if (base === "family") {
-            guildId = familyGuildId;
-            gatherChannelId = SERVERS[familyGuildId].CHANNELS.GATHER;
-            pings = "@everyone @Неизвестная роль"; 
-        } else {
-            guildId = ballasGuildId;
-            gatherChannelId = SERVERS[ballasGuildId].CHANNELS.GATHER;
-            pings = "@everyone <@&1504470450305241288> <@&1505558808766971944>";
-        }
-
-        const guild = await client.guilds.fetch(guildId).catch(() => null);
-        if (!guild) return;
-        const channel = await guild.channels.fetch(gatherChannelId).catch(() => null);
-        if (!channel) return;
-
-        const messageContent = `${pings}\nСбор на ${targetType}, всем быть, кого не будет = 2 варна. Группа: ${code}`;
-
-        for (let i = 0; i < 3; i++) {
-            // 1. Отправляем в канал
-            await channel.send(messageContent).catch(() => null);
-
-            // 2. Отправляем в ЛС всем нужным участникам
-            const members = await guild.members.fetch().catch(() => new Map());
-            for (const [id, member] of members) {
-                if (member.user.bot) continue;
-                
-                let shouldDM = false;
-                if (base === "ballas") {
-                    shouldDM = SERVERS[ballasGuildId].PING_ROLES.some(r => member.roles.cache.has(r));
-                } else {
-                    const famConf = SERVERS[familyGuildId];
-                    const famRoles = [...famConf.ALLOWED_ROLES, ...famConf.ACADEMY_ROLES, ...famConf.CAPTURE_ROLES];
-                    shouldDM = famRoles.some(r => member.roles.cache.has(r));
-                }
-
-                if (shouldDM) {
-                    await member.send(messageContent).catch(() => null);
-                    await new Promise(r => setTimeout(r, 50)); // небольшая задержка, чтобы не словить спам-блок от Discord
-                }
-            }
-
-            // Ждем 5 минут перед следующим циклом (если это не последний 3-й круг)
-            if (i < 2) {
-                await new Promise(r => setTimeout(r, 5 * 60 * 1000));
-            }
-        }
-    } catch (error) {
-        console.error(`[SPAM ERROR]`, error);
-    }
-}
-
-
-// =====================================================
 // READY & REGISTER COMMANDS
 // =====================================================
 client.once(Events.ClientReady, async () => {
@@ -340,9 +357,6 @@ client.once(Events.ClientReady, async () => {
     try {
         console.log(`[BOT] [${INSTANCE_ID}] Начало обновления слэш-команд...`);
         for (const guildId of Object.keys(SERVERS)) {
-            // Игнорируем гильдию балласов для регистрации старых слеш команд
-            if (guildId === "1504470399268819115") continue;
-            
             await rest.put(
                 Routes.applicationGuildCommands(client.user.id, guildId),
                 { body: commands }
@@ -353,12 +367,11 @@ client.once(Events.ClientReady, async () => {
         console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
     }
 
+    await ensureGroupPanel();
+
     // Запускаем мониторинг онлайна при включении бота и настраиваем интервал раз в 60 секунд
     await updateOnlineMonitor();
     setInterval(updateOnlineMonitor, 60000);
-    
-    // Инициализируем панель управления сборами
-    await setupGroupPanel();
 });
 
 
@@ -370,7 +383,7 @@ client.on(Events.MessageCreate, async (msg) => {
         if (!msg.guild || msg.author.bot) return;
 
         const config = SERVERS[msg.guild.id];
-        if (!config || !config.CHANNELS) return; // Проверка, чтобы игнорировать неполные конфиги
+        if (!config) return;
 
         if (msg.content === "/balance") {
             return msg.reply({
@@ -475,6 +488,73 @@ client.on(Events.InteractionCreate, async (i) => {
         if (!i.guild) return;
 
         const config = SERVERS[i.guild.id];
+
+        if (i.isStringSelectMenu() && i.customId === "group_source") {
+            const source = i.values[0];
+            const groupTypes = source === "family" ? FAMILY_GROUP_TYPES : BALLAS_GROUP_TYPES;
+
+            const typeMenu = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId(`group_type_${source}`)
+                    .setPlaceholder("Выберите, на что группать")
+                    .addOptions(
+                        Object.entries(groupTypes).map(([value, label]) => ({
+                            label,
+                            value
+                        }))
+                    )
+            );
+
+            await i.reply({
+                content: "Выберите тип сбора:",
+                components: [typeMenu],
+                ephemeral: true
+            });
+            return;
+        }
+
+        if (i.isStringSelectMenu() && i.customId.startsWith("group_type_")) {
+            const source = i.customId.replace("group_type_", "");
+            const type = i.values[0];
+
+            const modal = new ModalBuilder()
+                .setCustomId(`group_code_${source}_${type}`)
+                .setTitle("Код группы");
+
+            const codeInput = new TextInputBuilder()
+                .setCustomId("group_code")
+                .setLabel("Какой код группы?")
+                .setPlaceholder("YFKVQ")
+                .setMinLength(5)
+                .setMaxLength(5)
+                .setRequired(true)
+                .setStyle(TextInputStyle.Short);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(codeInput)
+            );
+
+            await i.showModal(modal);
+            return;
+        }
+
+        if (i.isModalSubmit() && i.customId.startsWith("group_code_")) {
+            const [, , source, type] = i.customId.split("_");
+            const code = i.fields.getTextInputValue("group_code").trim().toUpperCase();
+
+            if (!/^[A-Z0-9]{5}$/.test(code)) {
+                await i.reply({ content: "❌ Код группы должен быть ровно из 5 символов: английские буквы или цифры.", ephemeral: true });
+                return;
+            }
+
+            await sendGroupGather(source, type, code, i.user);
+            await i.reply({
+                content: `✅ Сбор запущен. Будет отправлено 3 сообщения каждые 5 минут. Группа: ${code}`,
+                ephemeral: true
+            });
+            return;
+        }
+
         if (!config) return;
 
         // СЛЭШ-КОМАНДЫ
@@ -533,62 +613,7 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // =====================================================
-        // ГРУППЫ: ВЫБОР ФРАКЦИИ (ОТ БАЛЛАС / ОТ СЕМЬИ)
-        // =====================================================
-        if (i.isStringSelectMenu() && i.customId === "group_base_select") {
-            const base = i.values[0]; 
-            
-            let options = [];
-            if (base === "ballas") {
-                options = ["цеха", "диллеры", "остров", "поставки", "фз", "контент", "банк", "дроп"].map(opt => ({
-                    label: opt.charAt(0).toUpperCase() + opt.slice(1),
-                    value: opt
-                }));
-            } else {
-                options = ["капты", "контент", "арену", "тайники"].map(opt => ({
-                    label: opt.charAt(0).toUpperCase() + opt.slice(1),
-                    value: opt
-                }));
-            }
-
-            const menuTarget = new ActionRowBuilder().addComponents(
-                new StringSelectMenuBuilder()
-                    .setCustomId(`group_target_${base}`)
-                    .setPlaceholder("Выберите тип сбора")
-                    .addOptions(options)
-            );
-
-            await i.reply({ content: "➡️ Выберите, на что именно объявляется сбор:", components: [menuTarget], ephemeral: true });
-            return;
-        }
-
-        // =====================================================
-        // ГРУППЫ: ВЫБОР ТИПА СБОРА -> ВЫЗОВ МОДАЛКИ С КОДОМ
-        // =====================================================
-        if (i.isStringSelectMenu() && i.customId.startsWith("group_target_")) {
-            const base = i.customId.replace("group_target_", "");
-            const type = i.values[0];
-
-            const modal = new ModalBuilder()
-                .setCustomId(`group_code_${base}_${type}`)
-                .setTitle("Код группы");
-
-            const codeInput = new TextInputBuilder()
-                .setCustomId("group_code_input")
-                .setLabel("Введите код группы (5 символов)")
-                .setPlaceholder("Например: ZEUJA")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true)
-                .setMaxLength(10); 
-
-            modal.addComponents(new ActionRowBuilder().addComponents(codeInput));
-            await i.showModal(modal);
-            return;
-        }
-
-
-        // МЕНЮ ВЫБОРА ЗАЯВКИ (ОТКРЫТИЕ МОДАЛКИ)
+        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -613,21 +638,6 @@ client.on(Events.InteractionCreate, async (i) => {
             );
 
             await i.showModal(modal);
-            return;
-        }
-
-        // =====================================================
-        // ГРУППЫ: ОТПРАВКА МОДАЛКИ (ЗАПУСК СБОРА)
-        // =====================================================
-        if (i.isModalSubmit() && i.customId.startsWith("group_code_")) {
-            const parts = i.customId.split("_");
-            const base = parts[2];
-            const type = parts.slice(3).join("_"); 
-            const code = i.fields.getTextInputValue("group_code_input");
-
-            await i.reply({ content: `✅ Сбор на **${type}** успешно запущен! Сообщения будут отправляться в канал и ЛС каждые 5 минут.`, ephemeral: true });
-
-            startGatheringSpam(base, type, code);
             return;
         }
 
@@ -687,7 +697,17 @@ client.on(Events.InteractionCreate, async (i) => {
             const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
             const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**\n${data.q1}\n\n**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**\n${data.q2}\n\n**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**\n${data.q3}\n\n**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**\n${data.q4}`;
+            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
+${data.q1}
+
+**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
+${data.q2}
+
+**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
+${data.q3}
+
+**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
+${data.q4}`;
 
             if (type !== "academy") {
                 embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
