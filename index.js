@@ -464,7 +464,7 @@ client.on(Events.InteractionCreate, async (i) => {
 • Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
 • Мы не принимаем детей, фриков и неадекватных людей.
 • Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
-• У нас нет отдельных местах только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
+• У нас нет отдельных местах только под капты или MCL — вы вступаете в тему и участвуете во всём контенте.
 • Если заявка была отклонена — это окончательное решение.
 • КД на повторную подачу заявки — **2 дня**.
 
@@ -487,9 +487,8 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            // НОВАЯ ПАНЕЛЬ СБОРОВ (Будет отправлена в канал групп)
+            // ОБНОВЛЕННАЯ ПАНЕЛЬ СБОРОВ (В точности как на фото)
             if (i.commandName === "group_panel") {
-                // Ты просил отправить это в канал 1508112178610438327
                 const channel = await client.channels.fetch("1508112178610438327").catch(() => null);
                 if (!channel) {
                     await i.reply({ content: "❌ Канал 'групп' не найден или у бота нет туда доступа.", ephemeral: true });
@@ -497,19 +496,26 @@ client.on(Events.InteractionCreate, async (i) => {
                 }
 
                 const embed = new EmbedBuilder()
-                    .setTitle("📡 Управление сборами")
-                    .setDescription("Выберите фракцию, от которой необходимо запустить сбор.")
+                    .setTitle("📡 Управление сборами групп")
+                    .setDescription(
+                        "Используйте кнопки ниже для запуска массового оповещения состава.\n\n" +
+                        "**Функционал:**\n" +
+                        "• 3 сообщения в канал сбора\n" +
+                        "• 3 рассылки в ЛС (раз в 5 минут)\n" +
+                        "• Упоминание всех причастных ролей\n\n" +
+                        "**Darkness & Ballas Central Control**"
+                    )
                     .setColor("#2b2d31");
 
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId("group_start_ballas")
-                        .setLabel("От Ballas Gang")
-                        .setStyle(ButtonStyle.Secondary)
+                        .setLabel("Ballas Gang")
+                        .setStyle(ButtonStyle.Danger)
                         .setEmoji("🍇"),
                     new ButtonBuilder()
                         .setCustomId("group_start_darkness")
-                        .setLabel("От Darkness Family")
+                        .setLabel("Darkness Family")
                         .setStyle(ButtonStyle.Primary)
                         .setEmoji("🌑")
                 );
@@ -606,7 +612,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
 
         // =====================================================
-        // СТАРАЯ СИСТЕМА ЗАЯВОК И ОСТАЛЬНОЕ (НЕ ТРОНУТО)
+        // СТАРАЯ СИСТЕМА ЗАЯВОК И ОСТАЛЬНОЕ
         // =====================================================
 
         const config = SERVERS[i.guild.id];
@@ -773,7 +779,7 @@ ${data.q4}`;
 
             const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
             
-            // Исключения: Кнопки выбора фракции для сбора (у них нет проверки на config.ALLOWED_ROLES, так как они в другом канале)
+            // Исключения: Кнопки выбора фракции для сбора (у них нет проверки на config.ALLOWED_ROLES)
             if (parts[0] === "group" && parts[1] === "start") return;
 
             if (!hasPermission) {
