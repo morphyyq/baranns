@@ -1,166 +1,3 @@
-// ... (начало кода из вашего примера остается без изменений до секции CONFIG)
-
-// =====================================================
-// CONFIG (Добавлен сервер Ballas и настройки групп)
-// =====================================================
-const SERVERS = {
-    "1458190222042075251": { // DARKNESS
-        CHANNELS: {
-            // ... ваши старые каналы
-            MONITOR: "1507787906700415076",
-            GROUP_PANEL: "1508112178610438327", // Канал управления группами
-            SBOR: "1458481307351781709"         // Канал сбора
-        },
-        PING_ROLE: "1458410756453306490", // Роль для пинга
-        // ... остальные настройки
-    },
-    "1504470399268819115": { // BALLAS
-        CHANNELS: {
-            SBOR: "1504574610564321290"
-        }
-    }
-};
-
-const GROUP_CONFIG = {
-    ballas: {
-        name: "Ballas",
-        guildId: "1504470399268819115",
-        options: ["цеха", "диллеры", "остров", "поставки", "фз", "контент", "банк", "дроп"]
-    },
-    family: {
-        name: "Семьи",
-        guildId: "1458190222042075251",
-        options: ["капты", "контент", "арену", "тайники"]
-    }
-};
-
-// Хранилище активных рассылок
-const activeSpams = new Map();
-
-// =====================================================
-// FUNCTIONS
-// =====================================================
-
-// Функция для рассылки (Канал + ЛС)
-async function runGroupSpam(orgKey, activity, groupCode, creatorId) {
-    const org = GROUP_CONFIG[orgKey];
-    const guild = client.guilds.cache.get(org.guildId);
-    const config = SERVERS[org.guildId];
-    if (!guild || !config) return;
-
-    const channel = guild.channels.cache.get(config.CHANNELS.SBOR);
-    const roleMention = config.PING_ROLE ? `<@&${config.PING_ROLE}>` : "@everyone";
-    const messageContent = `@everyone ${roleMention}\n## Сбор на ${activity}, всем быть, кого не будет = 2 варна. Группа: ${groupCode.toUpperCase()} ##`;
-
-    let count = 0;
-    
-    const interval = setInterval(async () => {
-        if (count >= 3) { // Лимит 3 раза (можно менять)
-            clearInterval(interval);
-            activeSpams.delete(`${orgKey}_${activity}`);
-            return;
-        }
-
-        // 1. Спам в канал (3 сообщения подряд по ТЗ)
-        if (channel) {
-            for (let i = 0; i < 3; i++) {
-                await channel.send(messageContent).catch(() => null);
-            }
-        }
-
-        // 2. Рассылка в ЛС участникам роли (или всем на сервере)
-        // Осторожно: Дискорд может забанить за массовую рассылку в ЛС. 
-        // Делаем выборку только тех, кто онлайн для безопасности.
-        const members = await guild.members.fetch();
-        members.forEach(member => {
-            if (!member.user.bot && (member.presence?.status !== 'offline')) {
-                member.send(`🔔 **СРОЧНЫЙ СБОР (${org.name})**\n${messageContent}`).catch(() => null);
-            }
-        });
-
-        count++;
-    }, 300000); // 5 минут (300 000 мс)
-
-    activeSpams.set(`${orgKey}_${activity}`, interval);
-}
-
-// =====================================================
-// EVENTS & COMMANDS (Добавим в ClientReady регистрацию команды)
-// =====================================================
-
-// Вставьте это внутрь client.once(Events.ClientReady, ...)
-// const commands = [ ... , new SlashCommandBuilder().setName("group_panel").setDescription("Создать панель управления группами") ]
-
-client.on(Events.InteractionCreate, async (i) => {
-    // Команда для создания панели (только для админов)
-    if (i.isChatInputCommand() && i.commandName === "group_panel") {
-        const embed = new EmbedBuilder()
-            .setTitle("🎮 Управление сборами")
-            .setDescription("Выберите организацию, от которой необходимо объявить сбор.")
-            .setColor("DarkButNotBlack");
-
-        const row = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId("group_org_select")
-                .setPlaceholder("Выберите организацию")
-                .addOptions(
-                    { label: "Ballas", value: "ballas", emoji: "🟣" },
-                    { label: "Семья Darkness", value: "family", emoji: "🌑" }
-                )
-        );
-
-        await i.reply({ embeds: [embed], components: [row] });
-    }
-
-    // 1. Выбор организации
-    if (i.isStringSelectMenu() && i.customId === "group_org_select") {
-        const orgKey = i.values[0];
-        const org = GROUP_CONFIG[orgKey];
-
-        const row = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId(`group_act_select_${orgKey}`)
-                .setPlaceholder("Выберите тип активности")
-                .addOptions(org.options.map(opt => ({ label: opt.toUpperCase(), value: opt })))
-        );
-
-        await i.reply({ content: `Выбрано: **${org.name}**. Теперь выберите активность:`, components: [row], ephemeral: true });
-    }
-
-    // 2. Выбор активности -> Открытие модалки для кода
-    if (i.isStringSelectMenu() && i.customId.startsWith("group_act_select_")) {
-        const orgKey = i.customId.replace("group_act_select_", "");
-        const activity = i.values[0];
-
-        const modal = new ModalBuilder()
-            .setCustomId(`group_modal_${orgKey}_${activity}`)
-            .setTitle("Код группы");
-
-        const input = new TextInputBuilder()
-            .setCustomId("group_code")
-            .setLabel("Введите код группы (5 символов)")
-            .setPlaceholder("Например: YFKVQ")
-            .setMinLength(5)
-            .setMaxLength(5)
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(input));
-        await i.showModal(modal);
-    }
-
-    // 3. Обработка модалки (запуск спама)
-    if (i.isModalSubmit() && i.customId.startsWith("group_modal_")) {
-        const [, , orgKey, activity] = i.customId.split("_");
-        const code = i.fields.getTextInputValue("group_code");
-
-        await i.reply({ content: `✅ Сбор запущен! Организация: **${orgKey}**, Тип: **${activity}**, Код: **${code}**. Рассылка будет идти каждые 5 минут.`, ephemeral: true });
-
-        runGroupSpam(orgKey, activity, code, i.user.id);
-    }
-});
-
-// ... (остальной код бота)
 require("dotenv").config();
 process.env.LANG = "en_US.UTF-8";
 
@@ -381,6 +218,11 @@ client.once(Events.ClientReady, async () => {
     console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
     const commands = [
+    new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
+    new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
+    new SlashCommandBuilder().setName("sbor_panel").setDescription("Вызвать панель управления группами") // ДОБАВЬ ЭТУ СТРОКУ
+].map(cmd => cmd.toJSON());
+    
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс")
     ].map(cmd => cmd.toJSON());
@@ -522,6 +364,20 @@ client.on(Events.InteractionCreate, async (i) => {
         if (!config) return;
 
         // СЛЭШ-КОМАНДЫ
+        if (i.commandName === "sbor_panel") {
+    const embed = new EmbedBuilder()
+        .setTitle("📢 Управление группами")
+        .setDescription("Выберите, от кого группать:")
+        .setColor("#2b2d31");
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("sbor_type_darkness").setLabel("От семьи").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("sbor_type_ballas").setLabel("От баллас").setStyle(ButtonStyle.Danger)
+    );
+
+    await i.reply({ content: "Панель отправлена!", ephemeral: true }); // Ответ только тебе
+    return i.channel.send({ embeds: [embed], components: [row] }); // Сама панель в канал
+}
         if (i.isChatInputCommand()) {
             if (i.commandName === "balance") {
                 await i.reply({ content: `💰 Баланс: ${salary[i.user.id] || 0}`, ephemeral: true });
@@ -853,3 +709,118 @@ process.on("SIGINT", shutdown);
 // LOGIN
 // =====================================================
 client.login(process.env.TOKEN);
+// =====================================================
+// СИСТЕМА СБОРОВ (ВСТАВИТЬ В САМЫЙ НИЗ)
+// =====================================================
+const activeSbors = new Map();
+
+// Функция для запуска цикла спама
+async function startSborLoop(type, category, code) {
+    const key = `${type}_loop`;
+    if (activeSbors.has(key)) clearInterval(activeSbors.get(key));
+
+    let dmCount = 0;
+    const run = async () => {
+        const guildId = type === "darkness" ? "1458190222042075251" : "1504470399268819115";
+        const config = SERVERS[guildId];
+        const guild = await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return;
+
+        // Канал сбора
+        const sborChanId = type === "darkness" ? "1458481307351781709" : "1504574610564321290";
+        const sborChan = await guild.channels.fetch(sborChanId).catch(() => null);
+        
+        // Роли для пинга
+        const pings = type === "darkness" 
+            ? `<@&1458410756453306490>` 
+            : `<@&1504470450305241288> <@&1505558808766971944>`;
+        
+        const text = `@everyone ${pings}\n\n## Сбор на ${category}, всем быть, кого не будет = 2 варна. Группа: ${code} ##`;
+
+        // 1. Отправка 3-х сообщений в канал сбора
+        if (sborChan) {
+            for (let i = 0; i < 3; i++) {
+                await sborChan.send(text).catch(() => null);
+            }
+        }
+
+        // 2. Рассылка в ЛС (3 раза за весь запуск)
+        if (dmCount < 3) {
+            const roleIds = type === "darkness" 
+                ? ["1458410756453306490"] 
+                : ["1504470450305241288", "1505558808766971944"];
+                
+            const members = await guild.members.fetch().catch(() => []);
+            members.forEach(m => {
+                if (!m.user.bot && roleIds.some(r => m.roles.cache.has(r))) {
+                    m.send(`🔔 **СРОЧНЫЙ СБОР: ${category.toUpperCase()}**\nГруппа: **${code}**\nБыть всем, иначе 2 варна!`).catch(() => null);
+                }
+            });
+            dmCount++;
+        }
+    };
+
+    run(); // Первый запуск сразу
+    activeSbors.set(key, setInterval(run, 300000)); // Далее каждые 5 минут
+}
+
+// Обработка всех взаимодействий для этой системы
+client.on(Events.InteractionCreate, async (i) => {
+    // 1. Команда вызова панели
+    if (i.isChatInputCommand() && i.commandName === "sbor_panel") {
+        const embed = new EmbedBuilder()
+            .setTitle("📢 Управление группами")
+            .setDescription("Выберите, от кого группать:")
+            .setColor("#2b2d31");
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("sbor_type_darkness").setLabel("От семьи").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId("sbor_type_ballas").setLabel("От баллас").setStyle(ButtonStyle.Danger)
+        );
+        await i.reply({ content: "Панель отправлена!", ephemeral: true });
+        return i.channel.send({ embeds: [embed], components: [row] });
+    }
+
+    // 2. Кнопки выбора стороны
+    if (i.isButton() && i.customId.startsWith("sbor_type_")) {
+        const type = i.customId.split("_")[2];
+        const options = type === "darkness" 
+            ? [
+                { label: "капты", value: "капты" }, { label: "контент", value: "контент" },
+                { label: "арену", value: "арену" }, { label: "тайники", value: "тайники" }
+              ]
+            : [
+                { label: "цеха", value: "цеха" }, { label: "диллеры", value: "диллеры" },
+                { label: "остров", value: "остров" }, { label: "поставки", value: "поставки" },
+                { label: "фз", value: "фз" }, { label: "контент", value: "контент" },
+                { label: "банк", value: "банк" }, { label: "дроп", value: "дроп" }
+              ];
+        
+        const menu = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId(`sbor_sel_${type}`)
+                .setPlaceholder("Выберите категорию")
+                .addOptions(options)
+        );
+        return i.reply({ content: "Что именно собираем?", components: [menu], ephemeral: true });
+    }
+
+    // 3. Выбор категории в меню
+    if (i.isStringSelectMenu() && i.customId.startsWith("sbor_sel_")) {
+        const type = i.customId.split("_")[2];
+        const cat = i.values[0];
+        const modal = new ModalBuilder().setCustomId(`sbor_mod_${type}_${cat}`).setTitle("Код группы");
+        const input = new TextInputBuilder()
+            .setCustomId("code")
+            .setLabel("Введите код (5 символов)")
+            .setMinLength(5)
+            .setMaxLength(5)
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+            
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        return i.showModal(modal);
+    }
+
+    // 4. Получение кода из модалки
+    if (i.isModalSubmit() && i.customId
