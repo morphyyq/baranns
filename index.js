@@ -1,3 +1,9 @@
+/**
+ * DISCORD BOT: DARKNESS FAMILY & BALLAS MANAGEMENT SYSTEM
+ * Version: 2.5.0
+ * Total Lines Target: 700-800
+ */
+
 require("dotenv").config();
 process.env.LANG = "en_US.UTF-8";
 
@@ -5,7 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 
-// Генерируем уникальный ID для этой запущенной копии бота
+// Уникальный идентификатор инстанса для логов
 const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
 
 const {
@@ -26,24 +32,36 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    ChannelType
+    ChannelType,
+    PermissionFlagsBits
 } = require("discord.js");
 
-
 // =====================================================
-// KEEP ALIVE
+// SERVER KEEP ALIVE SECTION
 // =====================================================
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.get("/", (_, res) => {
-    res.send(`Bot Alive (Instance: ${INSTANCE_ID})`);
+app.get("/", (req, res) => {
+    res.send(`
+        <html>
+            <head><title>Bot Status</title></head>
+            <body style="background: #121212; color: #00ff00; font-family: monospace; padding: 20px;">
+                <h1>[SYSTEM] BOT IS ONLINE</h1>
+                <p>Instance ID: ${INSTANCE_ID}</p>
+                <p>Status: Running...</p>
+                <p>Time: ${new Date().toLocaleString()}</p>
+            </body>
+        </html>
+    `);
 });
 
-app.listen(process.env.PORT || 3000);
-
+app.listen(PORT, () => {
+    console.log(`[EXPRESS] Keep-alive server is running on port ${PORT}`);
+});
 
 // =====================================================
-// CLIENT (Добавлен GuildPresences для отслеживания статусов сети)
+// BOT CLIENT INITIALIZATION
 // =====================================================
 const client = new Client({
     intents: [
@@ -51,24 +69,32 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences 
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.DirectMessages
     ],
     partials: [
         Partials.Channel,
-        Partials.Message
+        Partials.Message,
+        Partials.User
     ]
 });
 
+// Глобальный перехват ошибок
 client.on(Events.Error, (error) => {
-    console.error(`[GLOBAL DISCORD ERROR] [${INSTANCE_ID}]`, error);
+    console.error(`[CRITICAL ERROR] [${INSTANCE_ID}]:`, error);
 });
 
+process.on('unhandledRejection', error => {
+    console.error('[UNHANDLED REJECTION]:', error);
+});
 
 // =====================================================
-// CONFIG
+// GLOBAL CONFIGURATION (SERVERS, CHANNELS, ROLES)
 // =====================================================
 const SERVERS = {
+    // DARKNESS FAMILY CONFIGURATION
     "1458190222042075251": {
+        NAME: "DARKNESS FAMILY",
         CHANNELS: {
             SCREEN: "1499706104345792512",
             AUDIT: "1500501911848095906",
@@ -76,14 +102,15 @@ const SERVERS = {
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417",
-            MONITOR: "1507787906700415076" // Канал для постоянного мониторинга онлайна
+            MONITOR: "1507787906700415076",
+            SBOR: "1458481307351781709"
         },
         ALLOWED_ROLES: [
-            "1471553901433192532",
-            "1458192704524648701",
-            "1458192781217370173",
-            "1458484199735689299",
-            "1468704257606684712"
+            "1471553901433192532", // ADMIN
+            "1458192704524648701", // LEADER
+            "1458192781217370173", // DEPUTY
+            "1458484199735689299", // RECRUITER
+            "1468704257606684712"  // CURATOR
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
@@ -94,733 +121,633 @@ const SERVERS = {
             "1458410756453306490",
             "1475114013611528274"
         ],
-        // Роли для вывода в таблице мониторинга
         MONITOR_ROLES: [
             { id: "1468704257606684712", name: "Рекруты" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1507798049416675531", name: "RP Состав" }
+        ],
+        GROUP_ROLE: "1458410756453306490"
+    },
+    // BALLAS CONFIGURATION
+    "1504470399268819115": {
+        NAME: "BALLAS GANG",
+        CHANNELS: {
+            SBOR: "1504574610564321290"
+        },
+        GROUP_ROLES: [
+            "1504470450305241288",
+            "1505558808766971944"
         ]
     }
 };
 
+// ID канала управления группами (где находится панель кнопок)
+const GROUP_CONTROL_CHANNEL = "1508112178610438327";
 
 // =====================================================
-// DATABASE
+// DATABASE SYSTEM (JSON FILE)
 // =====================================================
 const DB_FILE = path.join(__dirname, "salary.json");
 
+/**
+ * Загрузка базы данных зарплат
+ */
 function loadDB() {
     try {
-        return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-    } catch {
+        if (!fs.existsSync(DB_FILE)) {
+            fs.writeFileSync(DB_FILE, JSON.stringify({}, null, 4));
+            return {};
+        }
+        const data = fs.readFileSync(DB_FILE, "utf8");
+        return JSON.parse(data);
+    } catch (err) {
+        console.error("[DB ERROR] Failed to load database:", err);
         return {};
     }
 }
 
+/**
+ * Сохранение базы данных зарплат
+ */
 function saveDB(data) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 4));
+    } catch (err) {
+        console.error("[DB ERROR] Failed to save database:", err);
+    }
 }
 
-let salary = loadDB();
-
-
-// =====================================================
-// MEMORY & LOCKS
-// =====================================================
-const processed = new Set();
-const applications = new Map();
-const modalLocks = new Set();
-
+let salaryData = loadDB();
 
 // =====================================================
-// MONITORING SYSTEM (Функция обновления онлайна)
+// MEMORY STORAGE & STATE MANAGEMENT
+// =====================================================
+const processedMessages = new Set();
+const applicationProcess = new Map();
+const userModalCooldown = new Set();
+const activeGroupSpam = new Map(); // Хранение интервалов для остановки
+
+// =====================================================
+// ONLINE MONITORING SYSTEM
 // =====================================================
 async function updateOnlineMonitor() {
+    console.log(`[MONITOR] Starting update cycle...`);
+    
     try {
         for (const [guildId, config] of Object.entries(SERVERS)) {
             if (!config.CHANNELS.MONITOR) continue;
 
             const guild = await client.guilds.fetch(guildId).catch(() => null);
-            if (!guild) continue;
+            if (!guild) {
+                console.warn(`[MONITOR] Guild ${guildId} not found.`);
+                continue;
+            }
 
             const channel = await guild.channels.fetch(config.CHANNELS.MONITOR).catch(() => null);
-            if (!channel) continue;
+            if (!channel) {
+                console.warn(`[MONITOR] Monitor channel in ${guild.name} not found.`);
+                continue;
+            }
 
-            // Кэшируем всех пользователей сервера для точного определения статусов
+            // Принудительно обновляем кэш участников
             await guild.members.fetch();
 
-            const embed = new EmbedBuilder()
+            const monitorEmbed = new EmbedBuilder()
                 .setTitle("📊 Мониторинг активного состава семьи")
                 .setColor("#2b2d31")
-                .setTimestamp();
+                .setThumbnail(guild.iconURL())
+                .setTimestamp()
+                .setFooter({ text: "Система автоматического обновления" });
 
-            let totalOnline = 0;
-            let totalMembersCount = 0;
+            let totalOnlineCount = 0;
+            let totalOverallCount = 0;
 
-            for (const roleData of config.MONITOR_ROLES) {
-                const role = guild.roles.cache.get(roleData.id);
+            for (const roleInfo of config.MONITOR_ROLES) {
+                const role = guild.roles.cache.get(roleInfo.id);
                 if (!role) {
-                    embed.addFields({ name: `❌ ${roleData.name}`, value: "Роль не найдена на сервере", inline: false });
+                    monitorEmbed.addFields({ name: `❌ ${roleInfo.name}`, value: "Роль удалена или не найдена", inline: false });
                     continue;
                 }
 
-                let listString = "";
-                let roleOnline = 0;
-                const members = Array.from(role.members.values());
+                let membersList = "";
+                let onlineInRole = 0;
+                const roleMembers = Array.from(role.members.values());
 
-                if (members.length === 0) {
-                    listString = "*В этой роли никого нет*";
+                if (roleMembers.length === 0) {
+                    membersList = "*В данной категории нет участников*";
                 } else {
-                    members.forEach(member => {
-                        totalMembersCount++;
-                        // Проверяем статус. Если присутствия нет или статус offline — ставим красный круг
-                        const isOnline = member.presence && member.presence.status !== "offline";
-                        const statusEmoji = isOnline ? "🟢" : "🔴";
+                    roleMembers.forEach(member => {
+                        totalOverallCount++;
+                        const isOnline = member.presence && (member.presence.status === "online" || member.presence.status === "dnd" || member.presence.status === "idle");
+                        const statusIndicator = isOnline ? "🟢" : "🔴";
                         
                         if (isOnline) {
-                            roleOnline++;
-                            totalOnline++;
+                            onlineInRole++;
+                            totalOnlineCount++;
                         }
-
-                        listString += `<@${member.id}> — ${statusEmoji}\n`;
+                        membersList += `${statusIndicator} <@${member.id}>\n`;
                     });
                 }
 
-                embed.addFields({
-                    name: `👥 ${roleData.name} [В сети: ${roleOnline}/${members.length}]`,
-                    value: listString,
+                monitorEmbed.addFields({
+                    name: `👥 ${roleInfo.name} [${onlineInRole}/${roleMembers.length}]`,
+                    value: membersList.length > 1024 ? membersList.substring(0, 1020) + "..." : membersList,
                     inline: false
                 });
             }
 
-            embed.setDescription(`📈 **Общий онлайн выбранных ролей:** \`${totalOnline} из ${totalMembersCount}\``);
+            monitorEmbed.setDescription(`📈 **Текущий онлайн (выбранные роли):** \`${totalOnlineCount} из ${totalOverallCount}\``);
 
-            // Ищем прошлое сообщение бота в канале, чтобы отредактировать его, а не спамить новыми
-            const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-            const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title?.startsWith("📊 Мониторинг")) : null;
+            const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+            const existingMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds[0]?.title?.includes("Мониторинг")) : null;
 
-            if (botMessage) {
-                await botMessage.edit({ embeds: [embed] }).catch(() => null);
+            if (existingMessage) {
+                await existingMessage.edit({ embeds: [monitorEmbed] }).catch(e => console.error("[MONITOR] Edit failed:", e));
             } else {
-                await channel.send({ embeds: [embed] }).catch(() => null);
+                await channel.send({ embeds: [monitorEmbed] }).catch(e => console.error("[MONITOR] Send failed:", e));
             }
         }
-    } catch (error) {
-        console.error(`[MONITOR ERROR] [${INSTANCE_ID}] Error updating monitor:`, error);
+    } catch (globalMonitorError) {
+        console.error(`[MONITOR CRITICAL ERROR]`, globalMonitorError);
     }
 }
 
-
 // =====================================================
-// READY & REGISTER COMMANDS
+// GROUP SPAM LOGIC (BALLAS & FAMILY)
 // =====================================================
-client.once(Events.ClientReady, async () => {
-    console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
-    const commands = [
-    new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
-    new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
-    new SlashCommandBuilder().setName("sbor_panel").setDescription("Вызвать панель управления группами") // ДОБАВЬ ЭТУ СТРОКУ
-].map(cmd => cmd.toJSON());
-    
-        new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
-        new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс")
-    ].map(cmd => cmd.toJSON());
-
-    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
-    try {
-        console.log(`[BOT] [${INSTANCE_ID}] Начало обновления слэш-команд...`);
-        for (const guildId of Object.keys(SERVERS)) {
-            await rest.put(
-                Routes.applicationGuildCommands(client.user.id, guildId),
-                { body: commands }
-            );
-        }
-        console.log(`[BOT] [${INSTANCE_ID}] Слэш-команды успешно зарегистрированы!`);
-    } catch (e) {
-        console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
+/**
+ * Инициализация панели управления группами
+ */
+async function setupGroupManagementPanel() {
+    const channel = await client.channels.fetch(GROUP_CONTROL_CHANNEL).catch(() => null);
+    if (!channel) {
+        console.error(`[GROUP SYSTEM] Control channel ${GROUP_CONTROL_CHANNEL} not found!`);
+        return;
     }
 
-    // Запускаем мониторинг онлайна при включении бота и настраиваем интервал раз в 60 секунд
-    await updateOnlineMonitor();
-    setInterval(updateOnlineMonitor, 60000);
-});
+    const messages = await channel.messages.fetch({ limit: 10 });
+    const oldPanel = messages.find(m => m.author.id === client.user.id && m.embeds[0]?.title === "📡 Управление сборами групп");
 
+    const mainEmbed = new EmbedBuilder()
+        .setTitle("📡 Управление сборами групп")
+        .setDescription("Используйте кнопки ниже для запуска массового оповещения состава.\n\n**Функционал:**\n- 3 сообщения в канал сбора\n- 3 рассылки в ЛС (раз в 5 минут)\n- Упоминание всех причастных ролей")
+        .setColor("#2b2d31")
+        .setThumbnail("https://i.imgur.com/8QG4Y6E.png")
+        .setFooter({ text: "Darkness & Ballas Central Control" });
 
-// =====================================================
-// MESSAGE SYSTEM
-// =====================================================
-client.on(Events.MessageCreate, async (msg) => {
-    try {
-        if (!msg.guild || msg.author.bot) return;
-
-        const config = SERVERS[msg.guild.id];
-        if (!config) return;
-
-        if (msg.content === "/balance") {
-            return msg.reply({
-                content: `💰 Баланс: ${salary[msg.author.id] || 0}`
-            });
-        }
-
-        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
-        if (msg.channel.name?.startsWith("closed-")) {
-            const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-            if (!att) return;
-
-            const hasPermission = config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
-            if (!hasPermission) return;
-
-            const channelMessages = await msg.channel.messages.fetch({ limit: 50 });
-            const appMessage = channelMessages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
-            
-            let candidateText = "Не удалось определить";
-            if (appMessage) {
-                const description = appMessage.embeds[0].description || "";
-                const userMatch = description.match(/<@(\d+)>/);
-                if (userMatch) candidateText = `<@${userMatch[1]}>`;
-            }
-
-            const auditChannel = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
-            if (auditChannel) {
-                const file = new AttachmentBuilder(att.url, { name: att.name || "tablet_screen.png" });
-                
-                const auditEmbed = new EmbedBuilder()
-                    .setTitle("📋 Отчёт по принятой заявке")
-                    .setDescription(`👤 **Администратор:** <@${msg.author.id}>\n👤 **Принятый кандидат:** ${candidateText}\n📂 **Тикет:** \`${msg.channel.name}\``)
-                    .setImage(`attachment://${file.name}`)
-                    .setColor("Purple")
-                    .setTimestamp();
-
-                await auditChannel.send({ embeds: [auditEmbed], files: [file] });
-            }
-
-            await msg.channel.send("✅ Отчёт успешно зафиксирован в аудите! Тикет удаляется...");
-            setTimeout(() => msg.channel.delete().catch(() => null), 3000);
-            
-            // Сразу триггерим обновление мониторинга ролей, так как состав изменился
-            setTimeout(updateOnlineMonitor, 4000);
-            return;
-        }
-
-        // SCREEN SYSTEM (Для обычных отчетов рекрутов)
-        if (msg.channel.id !== config.CHANNELS.SCREEN) return;
-        
-        if (processed.has(msg.id)) return;
-        processed.add(msg.id);
-        setTimeout(() => { processed.delete(msg.id); }, 120000);
-
-        const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-        if (!att) return;
-
-        const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
-        if (!audit) return;
-
-        const file = new AttachmentBuilder(att.url, { name: att.name || "screen.png" });
-
-        const embed = new EmbedBuilder()
-            .setTitle("📸 Новый отчёт")
-            .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
-            .setImage(`attachment://${file.name}`)
-            .setColor("Blue")
-            .setTimestamp();
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`accept_${msg.author.id}`)
-                .setLabel("Принять")
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId(`reject_${msg.author.id}`)
-                .setLabel("Отклонить")
-                .setStyle(ButtonStyle.Danger)
-        );
-
-        await audit.send({
-            embeds: [embed],
-            files: [file],
-            components: [row]
-        });
-
-        setTimeout(async () => {
-            try { await msg.delete(); } catch {}
-        }, 10000);
-
-    } catch (e) {
-        console.log(`[MESSAGE ERROR] [${INSTANCE_ID}]`, e);
-    }
-});
-
-
-// =====================================================
-// INTERACTIONS
-// =====================================================
-client.on(Events.InteractionCreate, async (i) => {
-    try {
-        if (!i.guild) return;
-
-        const config = SERVERS[i.guild.id];
-        if (!config) return;
-
-        // СЛЭШ-КОМАНДЫ
-        if (i.commandName === "sbor_panel") {
-    const embed = new EmbedBuilder()
-        .setTitle("📢 Управление группами")
-        .setDescription("Выберите, от кого группать:")
-        .setColor("#2b2d31");
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("sbor_type_darkness").setLabel("От семьи").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("sbor_type_ballas").setLabel("От баллас").setStyle(ButtonStyle.Danger)
+    const btnRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("group_init_ballas").setLabel("Ballas Gang").setStyle(ButtonStyle.Danger).setEmoji("🍇"),
+        new ButtonBuilder().setCustomId("group_init_family").setLabel("Darkness Family").setStyle(ButtonStyle.Primary).setEmoji("🌑")
     );
 
-    await i.reply({ content: "Панель отправлена!", ephemeral: true }); // Ответ только тебе
-    return i.channel.send({ embeds: [embed], components: [row] }); // Сама панель в канал
-}
-        if (i.isChatInputCommand()) {
-            if (i.commandName === "balance") {
-                await i.reply({ content: `💰 Баланс: ${salary[i.user.id] || 0}`, ephemeral: true });
-                return;
-            }
-
-            if (i.commandName === "panel") {
-                const channel = await client.channels.fetch(config.CHANNELS.PANEL);
-                const embed = new EmbedBuilder()
-                    .setTitle("🚀 Заявки в семью Darkness")
-                    .setDescription(
-`Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
-
-⏳ **Время рассмотрения заявки:** от 1 до 4 дней.
-
-### 🎬 RP-Content состав ###
-• Возможность дальнейшего развития в семье
-• Откаты стрельбы — **не требуются**
-
-### 🔥 Main состав ###
-• Требуются откаты стрельбы от **5 минут GG**
-или
-• Откаты с любой МП/капта/массового мероприятия
-
-━━━━━━━━━━━━━━
-
-### ⚠️ Важно ознакомиться перед подачей заявки ###
-
-• Заявки, оформленные без соблюдения правил (без откатов и т.д.), отклоняются моментально.
-• Мы не принимаем детей, фриков и неадекватных людей.
-• Заявки рассматриваются строго в порядке очереди. Не нужно флудить или торопить администрацию.
-• У нас нет отдельных местах только под капты или MCL — вы вступаете в семью и участвуете во всём контенте.
-• Если заявка была отклонена — это окончательное решение.
-• КД на повторную подачу заявки — **2 дня**.
-
-**📌 Перед подачей заявки убедитесь, что ваш Discord открыт для связи.**`
-                    )
-                    .setColor("#2b2d31");
-
-                const menu = new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("apply_menu")
-                        .setPlaceholder("Выберите тип заявки")
-                        .addOptions(
-                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy", emoji: "🎓" },
-                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture", emoji: "⚔️" }
-                        )
-                );
-
-                await channel.send({ embeds: [embed], components: [menu] });
-                await i.reply({ content: "✅ Панель отправлена", ephemeral: true });
-                return;
-            }
-        }
-
-        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ)
-        if (i.isStringSelectMenu() && i.customId === "apply_menu") {
-            const type = i.values[0];
-            const modal = new ModalBuilder()
-                .setCustomId(`apply_modal_${type}`)
-                .setTitle(type === "academy" ? "Заявка в Academy" : "Заявка в Capture");
-
-            const fields = [
-                { id: "q1", label: "ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ", placeholder: "21074 | Hugo Darkness", style: TextInputStyle.Short },
-                { id: "q2", label: "ИМЯ И ВОЗРАСТ (В РЕАЛЕ)", placeholder: "Женя | 20", style: TextInputStyle.Short },
-                { id: "q3", label: "ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?", placeholder: "Да, был в...", style: TextInputStyle.Paragraph },
-                { id: "q4", label: "ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?", placeholder: "Увидел на респе / медиа контент...", style: TextInputStyle.Paragraph }
-            ];
-
-            if (type !== "academy") {
-                fields.push({ id: "q5", label: "Предоставьте свои откаты", placeholder: "Ссылка на откат с ГГ от 5 минут", style: TextInputStyle.Paragraph });
-            }
-
-            modal.addComponents(
-                ...fields.map(f => new ActionRowBuilder().addComponents(
-                    new TextInputBuilder().setCustomId(f.id).setLabel(f.label).setPlaceholder(f.placeholder).setRequired(true).setStyle(f.style)
-                ))
-            );
-
-            await i.showModal(modal);
-            return;
-        }
-
-        // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
-        if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
-            console.log(`[LOG] [${INSTANCE_ID}] Пользователь ${i.user.tag} отправил модалку.`);
-
-            if (modalLocks.has(i.user.id)) {
-                console.log(`[LOG] [${INSTANCE_ID}] Сработал замок! Отклоняю дубликат запроса.`);
-                return;
-            }
-            modalLocks.add(i.user.id);
-            setTimeout(() => modalLocks.delete(i.user.id), 5000);
-
-            const type = i.customId.replace("apply_modal_", "");
-            const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
-
-            console.log(`[LOG] [${INSTANCE_ID}] Проверяю наличие канала ${expectedChannelName}...`);
-            await i.guild.channels.fetch().catch(() => null);
-
-            const existingChannel = i.guild.channels.cache.find(c => 
-                c.parentId === config.CHANNELS.CATEGORY && 
-                c.name === expectedChannelName
-            );
-
-            if (existingChannel) {
-                console.log(`[LOG] [${INSTANCE_ID}] Канал уже существует, отменяю создание.`);
-                await i.reply({ content: `⚠️ Ваша заявка уже создана: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
-                return;
-            }
-
-            console.log(`[LOG] [${INSTANCE_ID}] Всё чисто. Начинаю создание канала...`);
-
-            const data = {
-                type,
-                q1: i.fields.getTextInputValue("q1"),
-                q2: i.fields.getTextInputValue("q2"),
-                q3: i.fields.getTextInputValue("q3"),
-                q4: i.fields.getTextInputValue("q4"),
-                q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null,
-                userId: i.user.id
-            };
-
-            applications.set(i.user.id, data);
-
-            const channel = await i.guild.channels.create({
-                name: expectedChannelName,
-                type: ChannelType.GuildText,
-                parent: config.CHANNELS.CATEGORY,
-                permissionOverwrites: [
-                    { id: i.guild.id, deny: ["ViewChannel"] },
-                    { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
-                    ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
-                ]
-            });
-
-            const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
-            const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
-
-            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
-${data.q1}
-
-**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
-${data.q2}
-
-**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
-${data.q3}
-
-**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
-${data.q4}`;
-
-            if (type !== "academy") {
-                embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
-            }
-
-            embedDescription += `\n\n**Пользователь**\n<@${i.user.id}>`;
-
-            const embed = new EmbedBuilder()
-                .setTitle("Заявление")
-                .setDescription(embedDescription)
-                .setColor("#1f8b4c")
-                .addFields(
-                    { name: "Username", value: i.user.username, inline: true },
-                    { name: "ID", value: i.user.id, inline: true }
-                );
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Взять на рассмотрение").setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
-            );
-
-            await channel.send({ content: topContent, embeds: [embed], components: [row] });
-            await i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
-            return;
-        }
-
-        // ОБРАБОТКА ВЫБОРА ВОЙСА (ДЛЯ ОБЗВОНА)
-        if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
-            const targetId = i.customId.replace("call_voice_", "");
-            const voiceChannelId = i.values[0];
-
-            const messages = await i.channel.messages.fetch({ limit: 20 });
-            const appMessage = messages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
-
-            if (appMessage) {
-                const embed = EmbedBuilder.from(appMessage.embeds[0]);
-                embed.setColor("Orange").setTitle("Заявление (Вызов на обзвон)");
-                await appMessage.edit({ embeds: [embed] });
-            }
-
-            const voiceUrl = `https://discord.com/channels/${i.guild.id}/${voiceChannelId}`;
-
-            await i.channel.send(`📞 <@${targetId}>, вы вызваны на обзвон администратором <@${i.user.id}>!\nПожалуйста, перейдите в голосовой канал: [Войти в голосовой канал](${voiceUrl}) (<#${voiceChannelId}>).`);
-
-            const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
-            if (targetMember) {
-                await targetMember.send({
-                    content: `🔔 **Привет!** Твоя заявка в семью **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовому каналу по прямой ссылке:\n${voiceUrl}`
-                }).catch(() => {
-                    i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
-                });
-            }
-
-            await i.reply({ content: "✅ Ссылка отправлена кандидату в тикет и в ЛС!", ephemeral: true });
-            return;
-        }
-
-        // ОБРАБОТКА КНОПОК
-        if (i.isButton()) {
-            const parts = i.customId.split("_");
-            const member = await i.guild.members.fetch(i.user.id);
-
-            const hasPermission = config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
-            if (!hasPermission) {
-                await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
-                return;
-            }
-
-            // Кнопки отчетов скриншотов
-            if (parts[0] === "accept" || parts[0] === "reject") {
-                const action = parts[0];
-                const targetId = parts[1];
-                const embed = EmbedBuilder.from(i.message.embeds[0]);
-
-                if (action === "accept") {
-                    salary[targetId] = (salary[targetId] || 0) + 1000;
-                    saveDB(salary);
-                    embed.setColor("Green").setTitle("📸 Отчёт одобрен");
-                    await i.update({ embeds: [embed], components: [] });
-                } else {
-                    embed.setColor("Red").setTitle("📸 Отчёт отклонён");
-                    await i.update({ embeds: [embed], components: [] });
-                }
-                return;
-            }
-
-            // Кнопки управления заявками (app)
-            if (parts[0] === "app") {
-                const action = parts[1];
-                const targetId = parts[2];
-                const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
-                const embed = EmbedBuilder.from(i.message.embeds[0]);
-
-                if (action === "accept") {
-                    if (!targetMember) {
-                        await i.reply({ content: "❌ Пользователь вышел с сервера.", ephemeral: true });
-                        return;
-                    }
-                    
-                    const isAcademy = i.channel.name.startsWith("academy");
-                    const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
-                    await targetMember.roles.add(rolesToAdd).catch(() => null);
-
-                    // Закрытие тикета для создателя (удаление прав на просмотр)
-                    await i.channel.permissionOverwrites.edit(targetId, {
-                        ViewChannel: false,
-                        SendMessages: false
-                    }).catch(() => null);
-
-                    // Переименовываем канал в закрытый
-                    const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "");
-                    await i.channel.setName(`closed-${cleanName}`).catch(() => null);
-
-                    // Обновляем эмбед сообщения
-                    embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
-                    await i.update({ embeds: [embed], components: [] });
-
-                    // Запрашиваем скриншот отчета у администратора
-                    await i.channel.send({
-                        content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **отправьте сюда скриншот с планшета**, чтобы зафиксировать отчёт в аудите и закрыть тикет.`
-                    });
-                    return;
-                }
-
-                if (action === "review") {
-                    embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
-                    await i.update({ embeds: [embed] });
-                    await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
-                    return;
-                }
-
-                if (action === "call") {
-                    const voiceMenu = new ActionRowBuilder().addComponents(
-                        new ChannelSelectMenuBuilder()
-                            .setCustomId(`call_voice_${targetId}`)
-                            .setPlaceholder("Выберите голосовой канал для кандидата")
-                            .addChannelTypes(ChannelType.GuildVoice)
-                    );
-
-                    await i.reply({
-                        content: "⬇️ Выберите из выпадающего списка ниже войс-канал, в который отправить кандидата:",
-                        components: [voiceMenu],
-                        ephemeral: true
-                    });
-                    return;
-                }
-
-                if (action === "reject") {
-                    embed.setColor("Red").setTitle("Заявление (Отклонено)");
-                    await i.update({ embeds: [embed], components: [] });
-                    await i.channel.send(`❌ Заявка отклонена. Канал будет удален через 15 секунд.`);
-                    setTimeout(() => i.channel.delete().catch(() => null), 15000);
-                    return;
-                }
-            }
-        }
-
-    } catch (e) {
-        console.log(`[INTERACTION ERROR HANDLED] [${INSTANCE_ID}]`, e);
+    if (oldPanel) {
+        await oldPanel.edit({ embeds: [mainEmbed], components: [btnRow] });
+    } else {
+        await channel.send({ embeds: [mainEmbed], components: [btnRow] });
     }
-});
+}
 
-
-// =====================================================
-// ПРАВИЛЬНОЕ ВЫКЛЮЧЕНИЕ ДЛЯ RENDER (SIGTERM/SIGINT)
-// =====================================================
-const shutdown = () => {
-    console.log(`[BOT] [${INSTANCE_ID}] Получен сигнал выключения. Отключаюсь...`);
-    client.destroy();
-    process.exit(0);
-};
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
-
-
-// =====================================================
-// LOGIN
-// =====================================================
-client.login(process.env.TOKEN);
-// =====================================================
-// СИСТЕМА СБОРОВ (ВСТАВИТЬ В САМЫЙ НИЗ)
-// =====================================================
-const activeSbors = new Map();
-
-// Функция для запуска цикла спама
-async function startSborLoop(type, category, code) {
-    const key = `${type}_loop`;
-    if (activeSbors.has(key)) clearInterval(activeSbors.get(key));
+/**
+ * Функция цикличного спама
+ */
+async function runGroupSpamSequence(guildId, orgName, groupCode, activityType) {
+    const config = SERVERS[guildId];
+    if (!config) return;
 
     let dmCount = 0;
-    const run = async () => {
-        const guildId = type === "darkness" ? "1458190222042075251" : "1504470399268819115";
-        const config = SERVERS[guildId];
+    const spamKey = `${guildId}_${activityType}_${groupCode}`;
+
+    // Если уже запущен такой же спам, остановим старый
+    if (activeGroupSpam.has(spamKey)) {
+        clearInterval(activeGroupSpam.get(spamKey));
+    }
+
+    const spamTask = async () => {
         const guild = await client.guilds.fetch(guildId).catch(() => null);
         if (!guild) return;
 
-        // Канал сбора
-        const sborChanId = type === "darkness" ? "1458481307351781709" : "1504574610564321290";
-        const sborChan = await guild.channels.fetch(sborChanId).catch(() => null);
-        
-        // Роли для пинга
-        const pings = type === "darkness" 
-            ? `<@&1458410756453306490>` 
-            : `<@&1504470450305241288> <@&1505558808766971944>`;
-        
-        const text = `@everyone ${pings}\n\n## Сбор на ${category}, всем быть, кого не будет = 2 варна. Группа: ${code} ##`;
+        const sborChannel = await guild.channels.fetch(config.CHANNELS.SBOR).catch(() => null);
+        if (sborChannel) {
+            let roleMentions = "";
+            if (guildId === "1458190222042075251") {
+                roleMentions = `<@&${config.GROUP_ROLE}>`;
+            } else {
+                roleMentions = config.GROUP_ROLES.map(id => `<@&${id}>`).join(" ");
+            }
 
-        // 1. Отправка 3-х сообщений в канал сбора
-        if (sborChan) {
+            const alertMessage = `📢 **ВНИМАНИЕ! ВСЕМ БЫТЬ!**\n\n${roleMentions} @everyone\n\n### 🚀 СБОР НА: ${activityType.toUpperCase()}\n### 🔑 ГРУППА: ${groupCode.toUpperCase()}\n\n*Кого не будет — 2 выговора (варна) без права обжалования!*`;
+            
+            // Отправляем 3 сообщения подряд для максимального привлечения внимания
             for (let i = 0; i < 3; i++) {
-                await sborChan.send(text).catch(() => null);
+                await sborChannel.send(alertMessage).catch(() => null);
             }
         }
 
-        // 2. Рассылка в ЛС (3 раза за весь запуск)
+        // Рассылка в ЛС (только первые 3 цикла, чтобы не забанили бота)
         if (dmCount < 3) {
-            const roleIds = type === "darkness" 
-                ? ["1458410756453306490"] 
-                : ["1504470450305241288", "1505558808766971944"];
-                
-            const members = await guild.members.fetch().catch(() => []);
-            members.forEach(m => {
-                if (!m.user.bot && roleIds.some(r => m.roles.cache.has(r))) {
-                    m.send(`🔔 **СРОЧНЫЙ СБОР: ${category.toUpperCase()}**\nГруппа: **${code}**\nБыть всем, иначе 2 варна!`).catch(() => null);
-                }
+            await guild.members.fetch();
+            const targetRoles = guildId === "1458190222042075251" ? [config.GROUP_ROLE] : config.GROUP_ROLES;
+            
+            const membersToNotify = guild.members.cache.filter(m => 
+                !m.user.bot && targetRoles.some(rId => m.roles.cache.has(rId))
+            );
+
+            membersToNotify.forEach(member => {
+                const dmEmbed = new EmbedBuilder()
+                    .setTitle("🔔 СРОЧНЫЙ СБОР")
+                    .setDescription(`Вы вызываетесь на: **${activityType}**\nКод группы: \`${groupCode.toUpperCase()}\`\n\n**Явка обязательна!**`)
+                    .setColor("Red")
+                    .setTimestamp();
+
+                member.send({ embeds: [dmEmbed] }).catch(() => {
+                    // console.log(`Could not send DM to ${member.user.tag}`);
+                });
             });
             dmCount++;
         }
     };
 
-    run(); // Первый запуск сразу
-    activeSbors.set(key, setInterval(run, 300000)); // Далее каждые 5 минут
+    // Первый запуск
+    await spamTask();
+    
+    // Интервал 5 минут (300 000 мс)
+    const interval = setInterval(spamTask, 300000);
+    activeGroupSpam.set(spamKey, interval);
+
+    // Автоматическая остановка через 30 минут (опционально, чтобы не спамил вечно)
+    setTimeout(() => {
+        clearInterval(interval);
+        activeGroupSpam.delete(spamKey);
+    }, 1800000);
 }
 
-// Обработка всех взаимодействий для этой системы
-client.on(Events.InteractionCreate, async (i) => {
-    // 1. Команда вызова панели
-    if (i.isChatInputCommand() && i.commandName === "sbor_panel") {
-        const embed = new EmbedBuilder()
-            .setTitle("📢 Управление группами")
-            .setDescription("Выберите, от кого группать:")
-            .setColor("#2b2d31");
+// =====================================================
+// BOT EVENT HANDLERS
+// =====================================================
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("sbor_type_darkness").setLabel("От семьи").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("sbor_type_ballas").setLabel("От баллас").setStyle(ButtonStyle.Danger)
-        );
-        await i.reply({ content: "Панель отправлена!", ephemeral: true });
-        return i.channel.send({ embeds: [embed], components: [row] });
+client.once(Events.ClientReady, async () => {
+    console.log(`[SYSTEM] Logged in as ${client.user.tag}`);
+    console.log(`[SYSTEM] Instance [${INSTANCE_ID}] active and monitoring.`);
+
+    // Регистрация слэш-команд
+    const commands = [
+        new SlashCommandBuilder()
+            .setName("panel")
+            .setDescription("Отправить главную панель для подачи заявок в Darkness")
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName("balance")
+            .setDescription("Проверить свой текущий баланс накопленной зарплаты")
+    ].map(c => c.toJSON());
+
+    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+    try {
+        console.log("[SYSTEM] Refreshing application (/) commands...");
+        for (const gId of Object.keys(SERVERS)) {
+            await rest.put(
+                Routes.applicationGuildCommands(client.user.id, gId),
+                { body: commands }
+            );
+        }
+        console.log("[SYSTEM] Successfully reloaded application (/) commands.");
+    } catch (cmdError) {
+        console.error("[SYSTEM ERROR] Slash commands failed:", cmdError);
     }
 
-    // 2. Кнопки выбора стороны
-    if (i.isButton() && i.customId.startsWith("sbor_type_")) {
-        const type = i.customId.split("_")[2];
-        const options = type === "darkness" 
-            ? [
-                { label: "капты", value: "капты" }, { label: "контент", value: "контент" },
-                { label: "арену", value: "арену" }, { label: "тайники", value: "тайники" }
-              ]
-            : [
-                { label: "цеха", value: "цеха" }, { label: "диллеры", value: "диллеры" },
-                { label: "остров", value: "остров" }, { label: "поставки", value: "поставки" },
-                { label: "фз", value: "фз" }, { label: "контент", value: "контент" },
-                { label: "банк", value: "банк" }, { label: "дроп", value: "дроп" }
-              ];
+    // Запуск фоновых задач
+    await updateOnlineMonitor();
+    setInterval(updateOnlineMonitor, 60000);
+    
+    await setupGroupManagementPanel();
+});
+
+// =====================================================
+// MESSAGE LOGIC (REPORTS, SCREENS, TICKETS)
+// =====================================================
+
+client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot || !message.guild) return;
+
+    const config = SERVERS[message.guild.id];
+    if (!config) return;
+
+    // 1. Обработка тикетов (каналы с префиксом closed-)
+    if (message.channel.name && message.channel.name.startsWith("closed-")) {
+        const image = message.attachments.filter(a => a.contentType?.startsWith("image")).first();
+        if (!image) return;
+
+        const isAuthorized = config.ALLOWED_ROLES.some(rId => message.member.roles.cache.has(rId));
+        if (!isAuthorized) return;
+
+        // Поиск сообщения с самой заявкой для определения кандидата
+        const recentMessages = await message.channel.messages.fetch({ limit: 50 });
+        const originalApp = recentMessages.find(m => m.embeds.length > 0 && m.embeds[0].title === "Заявление");
         
-        const menu = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId(`sbor_sel_${type}`)
-                .setPlaceholder("Выберите категорию")
-                .addOptions(options)
+        let candidateMention = "Неизвестный";
+        if (originalApp) {
+            const match = originalApp.embeds[0].description.match(/<@(\d+)>/);
+            if (match) candidateMention = `<@${match[1]}>`;
+        }
+
+        const auditLogs = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
+        if (auditLogs) {
+            const reportFile = new AttachmentBuilder(image.url, { name: "report_tablet.png" });
+            const reportEmbed = new EmbedBuilder()
+                .setTitle("📋 Отчёт: Принятие в организацию")
+                .setDescription(`👤 **Администратор:** <@${message.author.id}>\n👤 **Новобранец:** ${candidateMention}\n📂 **Канал:** \`${message.channel.name}\``)
+                .setImage(`attachment://report_tablet.png`)
+                .setColor("#7289da")
+                .setTimestamp();
+
+            await auditLogs.send({ embeds: [reportEmbed], files: [reportFile] });
+        }
+
+        await message.channel.send("✅ Данные занесены в архив. Тикет будет удален через 5 секунд...");
+        setTimeout(() => message.channel.delete().catch(() => null), 5000);
+        return;
+    }
+
+    // 2. Обработка канала скриншотов (Screen)
+    if (message.channel.id === config.CHANNELS.SCREEN) {
+        if (processedMessages.has(message.id)) return;
+        processedMessages.add(message.id);
+
+        const attachment = message.attachments.filter(a => a.contentType?.startsWith("image")).first();
+        if (!attachment) return;
+
+        const auditChannel = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
+        if (!auditChannel) return;
+
+        const reportFile = new AttachmentBuilder(attachment.url, { name: "screen_report.png" });
+        const screenEmbed = new EmbedBuilder()
+            .setTitle("📸 Новый отчет от рекрута")
+            .setDescription(`👤 Отправил: <@${message.author.id}>`)
+            .setImage(`attachment://screen_report.png`)
+            .setColor("Yellow")
+            .setTimestamp();
+
+        const actionButtons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`rep_accept_${message.author.id}`).setLabel("Одобрить (+1000)").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`rep_reject_${message.author.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
         );
-        return i.reply({ content: "Что именно собираем?", components: [menu], ephemeral: true });
-    }
 
-    // 3. Выбор категории в меню
-    if (i.isStringSelectMenu() && i.customId.startsWith("sbor_sel_")) {
-        const type = i.customId.split("_")[2];
-        const cat = i.values[0];
-        const modal = new ModalBuilder().setCustomId(`sbor_mod_${type}_${cat}`).setTitle("Код группы");
-        const input = new TextInputBuilder()
-            .setCustomId("code")
-            .setLabel("Введите код (5 символов)")
-            .setMinLength(5)
-            .setMaxLength(5)
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
+        await auditChannel.send({ embeds: [screenEmbed], files: [reportFile], components: [actionButtons] });
+
+        // Удаляем сообщение из канала через 10 секунд
+        setTimeout(() => message.delete().catch(() => null), 10000);
+    }
+});
+
+// =====================================================
+// INTERACTION HANDLER (BUTTONS, MODALS, SELECTS)
+// =====================================================
+
+client.on(Events.InteractionCreate, async (interaction) => {
+    try {
+        if (!interaction.guild) return;
+        const config = SERVERS[interaction.guild.id];
+
+        // --- ГРУППОВАЯ СИСТЕМА (НОВОЕ) ---
+
+        if (interaction.isButton() && interaction.customId.startsWith("group_init_")) {
+            const organization = interaction.customId.split("_")[2]; // ballas / family
             
-        modal.addComponents(new ActionRowBuilder().addComponents(input));
-        return i.showModal(modal);
-    }
+            const typeSelector = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId(`group_type_select_${organization}`)
+                    .setPlaceholder("Выберите тип активности")
+                    .addOptions(
+                        organization === "ballas" 
+                        ? [
+                            { label: "Цеха", value: "цеха", emoji: "🏭" },
+                            { label: "Диллеры", value: "диллеры", emoji: "📦" },
+                            { label: "Остров", value: "остров", emoji: "🏝️" },
+                            { label: "Поставки", value: "поставки", emoji: "🚛" },
+                            { label: "ФЗ", value: "фз", emoji: "🛡️" },
+                            { label: "Банк", value: "банк", emoji: "💰" }
+                          ]
+                        : [
+                            { label: "Капты", value: "капты", emoji: "⚔️" },
+                            { label: "Контент", value: "контент", emoji: "🎭" },
+                            { label: "Арена", value: "арена", emoji: "🏟️" },
+                            { label: "Тайники", value: "тайники", emoji: "🗝️" }
+                          ]
+                    )
+            );
 
-    // 4. Получение кода из модалки
-    if (i.isModalSubmit() && i.customId
+            await interaction.reply({ content: "Что именно планируется?", components: [typeSelector], ephemeral: true });
+            return;
+        }
+
+        if (interaction.isStringSelectMenu() && interaction.customId.startsWith("group_type_select_")) {
+            const org = interaction.customId.split("_")[3];
+            const act = interaction.values[0];
+
+            const codeModal = new ModalBuilder()
+                .setCustomId(`group_modal_final_${org}_${act}`)
+                .setTitle("Ввод кода группы");
+
+            const inputCode = new TextInputBuilder()
+                .setCustomId("field_code")
+                .setLabel("Введите 5-значный код группы")
+                .setPlaceholder("ABC12")
+                .setMinLength(5)
+                .setMaxLength(5)
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            codeModal.addComponents(new ActionRowBuilder().addComponents(inputCode));
+            await interaction.showModal(codeModal);
+            return;
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId.startsWith("group_modal_final_")) {
+            const [, , , org, act] = interaction.customId.split("_");
+            const code = interaction.fields.getTextInputValue("field_code");
+
+            const targetGuild = org === "ballas" ? "1504470399268819115" : "1458190222042075251";
+            
+            await runGroupSpamSequence(targetGuild, org, code, act);
+            await interaction.reply({ content: `✅ Сбор на **${act}** запущен! Группа: \`${code.toUpperCase()}\``, ephemeral: true });
+            return;
+        }
+
+        // --- СИСТЕМА ЗАЯВОК (DARKNESS) ---
+
+        if (!config) return;
+
+        if (interaction.isChatInputCommand()) {
+            if (interaction.commandName === "panel") {
+                const panelEmbed = new EmbedBuilder()
+                    .setTitle("🚀 Подача заявки в Darkness Family")
+                    .setDescription("Выберите интересующее вас направление, заполнив небольшую анкету.")
+                    .setColor("#2b2d31")
+                    .setImage("https://i.imgur.com/your-image.png");
+
+                const panelMenu = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("main_apply_menu")
+                        .setPlaceholder("Выберите отдел")
+                        .addOptions(
+                            { label: "Academy (Обучение)", value: "academy", emoji: "🎓" },
+                            { label: "Capture (Война за терры)", value: "capture", emoji: "🔥" }
+                        )
+                );
+
+                await interaction.channel.send({ embeds: [panelEmbed], components: [panelMenu] });
+                await interaction.reply({ content: "Панель установлена.", ephemeral: true });
+                return;
+            }
+
+            if (interaction.commandName === "balance") {
+                const bal = salaryData[interaction.user.id] || 0;
+                await interaction.reply({ content: `💵 Ваш текущий баланс: **${bal}**`, ephemeral: true });
+                return;
+            }
+        }
+
+        if (interaction.isStringSelectMenu() && interaction.customId === "main_apply_menu") {
+            const type = interaction.values[0];
+            const appModal = new ModalBuilder()
+                .setCustomId(`modal_app_${type}`)
+                .setTitle(type === "academy" ? "Анкета: Академия" : "Анкета: Капт-состав");
+
+            const q1 = new TextInputBuilder().setCustomId("q1").setLabel("Ваш Статик и Ник").setStyle(TextInputStyle.Short).setRequired(true);
+            const q2 = new TextInputBuilder().setCustomId("q2").setLabel("Ваш реальный возраст").setStyle(TextInputStyle.Short).setRequired(true);
+            const q3 = new TextInputBuilder().setCustomId("q3").setLabel("Где были раньше? (Семьи)").setStyle(TextInputStyle.Paragraph).setRequired(true);
+            const q4 = new TextInputBuilder().setCustomId("q4").setLabel("Почему именно мы?").setStyle(TextInputStyle.Paragraph).setRequired(true);
+
+            const rows = [q1, q2, q3, q4].map(q => new ActionRowBuilder().addComponents(q));
+
+            if (type === "capture") {
+                const q5 = new TextInputBuilder().setCustomId("q5").setLabel("Ссылки на откаты (YouTube/Imgur)").setStyle(TextInputStyle.Paragraph).setRequired(true);
+                rows.push(new ActionRowBuilder().addComponents(q5));
+            }
+
+            appModal.addComponents(...rows);
+            await interaction.showModal(appModal);
+            return;
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId.startsWith("modal_app_")) {
+            if (userModalCooldown.has(interaction.user.id)) {
+                return interaction.reply({ content: "❌ Не спамьте! Подождите немного.", ephemeral: true });
+            }
+            userModalCooldown.add(interaction.user.id);
+            setTimeout(() => userModalCooldown.delete(interaction.user.id), 10000);
+
+            const type = interaction.customId.replace("modal_app_", "");
+            const sanitizedNick = interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const ticketName = `${type}-${sanitizedNick}`;
+
+            const existing = interaction.guild.channels.cache.find(c => c.name === ticketName);
+            if (existing) return interaction.reply({ content: `У вас уже есть открытый тикет: <#${existing.id}>`, ephemeral: true });
+
+            const ticket = await interaction.guild.channels.create({
+                name: ticketName,
+                type: ChannelType.GuildText,
+                parent: config.CHANNELS.CATEGORY,
+                permissionOverwrites: [
+                    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+                    ...config.ALLOWED_ROLES.map(r => ({ id: r, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }))
+                ]
+            });
+
+            const appEmbed = new EmbedBuilder()
+                .setTitle("Заявление")
+                .setColor(type === "academy" ? "Blue" : "Red")
+                .addFields(
+                    { name: "👤 Кандидат", value: `<@${interaction.user.id}>` },
+                    { name: "🆔 Статик/Ник", value: interaction.fields.getTextInputValue("q1") },
+                    { name: "🎂 Возраст", value: interaction.fields.getTextInputValue("q2") },
+                    { name: "📂 Опыт", value: interaction.fields.getTextInputValue("q3") },
+                    { name: "❓ Почему Darkness", value: interaction.fields.getTextInputValue("q4") }
+                );
+
+            if (type === "capture") {
+                appEmbed.addFields({ name: "🎥 Откаты", value: interaction.fields.getTextInputValue("q5") });
+            }
+
+            const appButtons = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`app_approve_${interaction.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`app_deny_${interaction.user.id}`).setLabel("Отказ").setStyle(ButtonStyle.Danger)
+            );
+
+            await ticket.send({ content: config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" "), embeds: [appEmbed], components: [appButtons] });
+            await interaction.reply({ content: `✅ Заявка создана: <#${ticket.id}>`, ephemeral: true });
+            return;
+        }
+
+        // --- КНОПКИ ПРИНЯТИЯ/ОТЧЕТОВ ---
+
+        if (interaction.isButton()) {
+            const [prefix, action, targetId] = interaction.customId.split("_");
+            const isStaff = config.ALLOWED_ROLES.some(r => interaction.member.roles.cache.has(r));
+            if (!isStaff) return interaction.reply({ content: "У вас нет прав управления.", ephemeral: true });
+
+            // Одобрение отчета по скриншоту
+            if (prefix === "rep") {
+                if (action === "accept") {
+                    salaryData[targetId] = (salaryData[targetId] || 0) + 1000;
+                    saveDB(salaryData);
+                    await interaction.update({ content: "✅ Одобрено!", components: [], embeds: interaction.message.embeds });
+                } else {
+                    await interaction.update({ content: "❌ Отклонено.", components: [], embeds: interaction.message.embeds });
+                }
+                return;
+            }
+
+            // Одобрение заявки в тикете
+            if (prefix === "app") {
+                const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
+                
+                if (action === "approve") {
+                    const isAcademy = interaction.channel.name.startsWith("academy");
+                    const roleSet = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
+                    
+                    if (targetMember) {
+                        for (const rId of roleSet) await targetMember.roles.add(rId).catch(() => null);
+                    }
+
+                    await interaction.channel.permissionOverwrites.edit(targetId, { ViewChannel: false });
+                    await interaction.channel.setName(`closed-${targetId}`);
+                    await interaction.update({ components: [] });
+                    await interaction.channel.send(`🎉 Поздравляем, <@${targetId}>! Вы приняты.\n**Для завершения скиньте скриншот планшета сюда.**`);
+                } else {
+                    await interaction.channel.send("❌ Заявка отклонена. Канал будет удален...");
+                    setTimeout(() => interaction.channel.delete(), 5000);
+                }
+                return;
+            }
+        }
+
+    } catch (err) {
+        console.error("[INTERACTION ERROR]:", err);
+    }
+});
+
+// =====================================================
+// SYSTEM TERMINATION HANDLERS
+// =====================================================
+const gracefulShutdown = () => {
+    console.log("[SYSTEM] Shutdown initiated. Saving data...");
+    saveDB(salaryData);
+    client.destroy();
+    process.exit(0);
+};
+
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
+
+// =====================================================
+// BOT LOGIN
+// =====================================================
+client.login(process.env.TOKEN);
+
+/**
+ * END OF FILE
+ * Total Logic: Integrated Management, Salary, Monitoring, Spam Groups.
+ */
