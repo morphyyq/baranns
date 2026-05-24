@@ -144,7 +144,6 @@ let salary = loadDB();
 const processed = new Set();
 const applications = new Map();
 const modalLocks = new Set();
-const groupSessions = new Map(); // Хранилище для системы сборов
 
 
 // =====================================================
@@ -292,7 +291,6 @@ client.once(Events.ClientReady, async () => {
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
-        // НОВАЯ КОМАНДА
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить панель управления сборами")
     ].map(cmd => cmd.toJSON());
 
@@ -487,7 +485,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            // ОБНОВЛЕННАЯ ПАНЕЛЬ СБОРОВ (В точности как на фото)
             if (i.commandName === "group_panel") {
                 const channel = await client.channels.fetch("1508112178610438327").catch(() => null);
                 if (!channel) {
@@ -563,11 +560,9 @@ client.on(Events.InteractionCreate, async (i) => {
             const faction = i.customId.replace("group_select_", "");
             const activity = i.values[0];
 
-            // Сохраняем промежуточный выбор пользователя
-            groupSessions.set(i.user.id, { faction, activity });
-
+            // Передаем переменные напрямую в ID модалки
             const modal = new ModalBuilder()
-                .setCustomId("group_modal_code")
+                .setCustomId(`group_modal_code_${faction}_${activity}`)
                 .setTitle("Код группы");
 
             const codeInput = new TextInputBuilder()
@@ -585,28 +580,23 @@ client.on(Events.InteractionCreate, async (i) => {
         }
 
         // 3. Обработка модалки с кодом группы
-        if (i.isModalSubmit() && i.customId === "group_modal_code") {
-            const session = groupSessions.get(i.user.id);
-            if (!session) {
-                await i.reply({ content: "❌ Ошибка сессии. Попробуйте нажать кнопку выбора заново.", ephemeral: true });
-                return;
-            }
+        if (i.isModalSubmit() && i.customId.startsWith("group_modal_code_")) {
+            const parts = i.customId.split("_");
+            const faction = parts[3];   // ballas или darkness
+            const activity = parts[4];  // цеха, контент и т.д.
 
             const code = i.fields.getTextInputValue("group_code_input").toUpperCase();
             
             // Определяем ID сервера в зависимости от фракции
-            const guildId = session.faction === "ballas" ? "1504470399268819115" : "1458190222042075251";
+            const guildId = faction === "ballas" ? "1504470399268819115" : "1458190222042075251";
 
             await i.reply({ 
-                content: `✅ Запущено оповещение для **${session.faction}** на **${session.activity}**. Код группы: **${code}**.\n\nБот отправит по 3 сообщения в канал и 1 в ЛС сейчас, а также повторит это через 5 и 10 минут.`, 
+                content: `✅ Запущено оповещение для **${faction}** на **${activity}**. Код группы: **${code}**.\n\nБот отправит по 3 сообщения в канал и 1 в ЛС сейчас, а также повторит это через 5 и 10 минут.`, 
                 ephemeral: true 
             });
             
             // Запускаем рассылку
-            startMassNotification(guildId, session.activity, code);
-            
-            // Очищаем сессию
-            groupSessions.delete(i.user.id);
+            startMassNotification(guildId, activity, code);
             return;
         }
 
@@ -705,7 +695,7 @@ client.on(Events.InteractionCreate, async (i) => {
             let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
 ${data.q1}
 
-**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
+**ИМЯ И ВОЗРАСТ (В РЕАЛЕЕ)**
 ${data.q2}
 
 **ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
