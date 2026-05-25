@@ -43,7 +43,7 @@ app.listen(process.env.PORT || 3000);
 
 
 // =====================================================
-// CLIENT (Добавлен GuildPresences для отслеживания статусов сети)
+// CLIENT
 // =====================================================
 const client = new Client({
     intents: [
@@ -76,8 +76,8 @@ const SERVERS = {
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417",
-            MONITOR: "1507787906700415076", // Канал для постоянного мониторинга онлайна
-            SBOR: "1458481307351781709" // Канал сбора Darkness
+            MONITOR: "1507787906700415076",
+            SBOR: "1458481307351781709" 
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -95,22 +95,20 @@ const SERVERS = {
             "1458410756453306490",
             "1475114013611528274"
         ],
-        // Роли для вывода в таблице мониторинга
         MONITOR_ROLES: [
             { id: "1468704257606684712", name: "Рекруты" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1507798049416675531", name: "RP Состав" }
         ],
-        PING_ROLES: [ // Роли для пинга при сборе
+        PING_ROLES: [
             "1458410756453306490"
         ]
     },
-    // НОВЫЙ СЕРВЕР BALLAS
     "1504470399268819115": {
         CHANNELS: {
-            SBOR: "1504574610564321290" // Канал сбора Ballas
+            SBOR: "1504574610564321290" 
         },
-        PING_ROLES: [ // Роли баллас
+        PING_ROLES: [ 
             "1504470450305241288", 
             "1505558808766971944"
         ]
@@ -125,9 +123,11 @@ const DB_FILE = path.join(__dirname, "salary.json");
 
 function loadDB() {
     try {
-        return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+        const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+        if (!data._meta) data._meta = {};
+        return data;
     } catch {
-        return {};
+        return { _meta: {} };
     }
 }
 
@@ -147,7 +147,78 @@ const modalLocks = new Set();
 
 
 // =====================================================
-// MONITORING SYSTEM (Функция обновления онлайна)
+// SALARY & RESET SYSTEM (Единый эмбед + обнуление)
+// =====================================================
+
+// Обновление таблицы в канале зарплат
+async function updateSalaryEmbed(client, guildId) {
+    try {
+        const config = SERVERS[guildId];
+        if (!config || !config.CHANNELS || !config.CHANNELS.SALARY) return;
+
+        const guild = await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return;
+
+        const channel = await guild.channels.fetch(config.CHANNELS.SALARY).catch(() => null);
+        if (!channel) return;
+
+        const embed = new EmbedBuilder()
+            .setTitle("💼 Таблица зарплат рекрутеров")
+            .setDescription("Список текущих балансов. За каждый принятый скриншот выдается **1000**. \n*Баланс автоматически обнуляется каждый понедельник.*")
+            .setColor("#2b2d31")
+            .setTimestamp();
+
+        let list = "";
+        for (const [userId, amount] of Object.entries(salary)) {
+            if (userId === "_meta" || amount === 0) continue;
+            list += `<@${userId}> — **${amount}** 💰\n`;
+        }
+
+        if (!list) list = "*Список пуст. Ни одного отчета еще не принято.*";
+
+        embed.addFields({ name: "Балансы", value: list });
+
+        const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+        const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title === "💼 Таблица зарплат рекрутеров") : null;
+
+        if (botMessage) {
+            await botMessage.edit({ embeds: [embed] }).catch(() => null);
+        } else {
+            await channel.send({ embeds: [embed] }).catch(() => null);
+        }
+    } catch (e) {
+        console.error(`[SALARY ERROR] [${INSTANCE_ID}]`, e);
+    }
+}
+
+// Проверка на наступление понедельника
+async function checkMondayReset() {
+    const now = new Date();
+    // getDay() возвращает 1 для понедельника
+    if (now.getDay() === 1) {
+        const todayStr = now.toISOString().split('T')[0]; // Формат YYYY-MM-DD
+        
+        if (salary._meta.lastResetDate !== todayStr) {
+            console.log(`[LOG] [${INSTANCE_ID}] Наступил понедельник, обнуляю зарплаты.`);
+            salary._meta.lastResetDate = todayStr;
+            
+            // Удаляем все балансы пользователей
+            for (const key of Object.keys(salary)) {
+                if (key !== "_meta") delete salary[key];
+            }
+            saveDB(salary);
+            
+            // Обновляем эмбеды
+            for (const guildId of Object.keys(SERVERS)) {
+                await updateSalaryEmbed(client, guildId);
+            }
+        }
+    }
+}
+
+
+// =====================================================
+// MONITORING SYSTEM
 // =====================================================
 async function updateOnlineMonitor() {
     try {
@@ -160,7 +231,6 @@ async function updateOnlineMonitor() {
             const channel = await guild.channels.fetch(config.CHANNELS.MONITOR).catch(() => null);
             if (!channel) continue;
 
-            // Кэшируем всех пользователей сервера для точного определения статусов
             await guild.members.fetch();
 
             const embed = new EmbedBuilder()
@@ -187,7 +257,6 @@ async function updateOnlineMonitor() {
                 } else {
                     members.forEach(member => {
                         totalMembersCount++;
-                        // Проверяем статус. Если присутствия нет или статус offline — ставим красный круг
                         const isOnline = member.presence && member.presence.status !== "offline";
                         const statusEmoji = isOnline ? "🟢" : "🔴";
                         
@@ -209,7 +278,6 @@ async function updateOnlineMonitor() {
 
             embed.setDescription(`📈 **Общий онлайн выбранных ролей:** \`${totalOnline} из ${totalMembersCount}\``);
 
-            // Ищем прошлое сообщение бота в канале, чтобы отредактировать его, а не спамить новыми
             const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
             const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title?.startsWith("📊 Мониторинг")) : null;
 
@@ -246,7 +314,6 @@ async function startMassNotification(guildId, activity, groupCode) {
     const executeSpam = async () => {
         cycles++;
         
-        // 1. Отправляем 3 раза в канал сбора
         try {
             for (let i = 0; i < 3; i++) {
                 await channel.send(messageContent).catch(() => null);
@@ -255,7 +322,6 @@ async function startMassNotification(guildId, activity, groupCode) {
             console.error("Ошибка отправки сбора в канал:", e);
         }
 
-        // 2. Отправляем 1 раз в ЛС всем нужным ролям
         try {
             await guild.members.fetch();
             const targetMembers = guild.members.cache.filter(m => 
@@ -269,15 +335,12 @@ async function startMassNotification(guildId, activity, groupCode) {
             console.error("Ошибка рассылки в ЛС:", e);
         }
 
-        // Останавливаем после 3 циклов
         if (cycles >= 3) {
             clearInterval(spamInterval);
         }
     };
 
-    // Выполняем первый раз сразу
     executeSpam();
-    // И повторяем каждые 5 минут (300000 миллисекунд)
     const spamInterval = setInterval(executeSpam, 300000);
 }
 
@@ -309,9 +372,17 @@ client.once(Events.ClientReady, async () => {
         console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
     }
 
-    // Запускаем мониторинг онлайна при включении бота и настраиваем интервал раз в 60 секунд
+    // Запуск систем
     await updateOnlineMonitor();
-    setInterval(updateOnlineMonitor, 60000);
+    setInterval(updateOnlineMonitor, 60000); // Онлайн раз в минуту
+    
+    await checkMondayReset();
+    setInterval(checkMondayReset, 3600000); // Зарплаты (проверка сброса) раз в час
+    
+    // Обновляем эмбеды зарплат при запуске для актуальности
+    for (const guildId of Object.keys(SERVERS)) {
+        await updateSalaryEmbed(client, guildId);
+    }
 });
 
 
@@ -326,12 +397,13 @@ client.on(Events.MessageCreate, async (msg) => {
         if (!config) return;
 
         if (msg.content === "/balance") {
+            const userBal = salary[msg.author.id] || 0;
             return msg.reply({
-                content: `💰 Баланс: ${salary[msg.author.id] || 0}`
+                content: `💰 Ваш баланс: ${userBal}`
             });
         }
 
-        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
+        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
@@ -365,8 +437,6 @@ client.on(Events.MessageCreate, async (msg) => {
 
             await msg.channel.send("✅ Отчёт успешно зафиксирован в аудите! Тикет удаляется...");
             setTimeout(() => msg.channel.delete().catch(() => null), 3000);
-            
-            // Сразу триггерим обновление мониторинга ролей, так как состав изменился
             setTimeout(updateOnlineMonitor, 4000);
             return;
         }
@@ -386,8 +456,8 @@ client.on(Events.MessageCreate, async (msg) => {
             const file = new AttachmentBuilder(att.url, { name: att.name || "screen.png" });
 
             const embed = new EmbedBuilder()
-                .setTitle("📸 Новый отчёт")
-                .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
+                .setTitle("📸 Новый отчёт рекрутера")
+                .setDescription(`👤 Рекрут: <@${msg.author.id}>\n\n*Для проверки того, принят ли человек на сервер, используйте кнопку "Проверить" и введите его Discord ID.*`)
                 .setImage(`attachment://${file.name}`)
                 .setColor("Blue")
                 .setTimestamp();
@@ -397,6 +467,10 @@ client.on(Events.MessageCreate, async (msg) => {
                     .setCustomId(`accept_${msg.author.id}`)
                     .setLabel("Принять")
                     .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`check_${msg.author.id}`)
+                    .setLabel("Проверить")
+                    .setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder()
                     .setCustomId(`reject_${msg.author.id}`)
                     .setLabel("Отклонить")
@@ -411,7 +485,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
             setTimeout(async () => {
                 try { await msg.delete(); } catch {}
-            }, 10000);
+            }, 5000);
         }
 
     } catch (e) {
@@ -526,10 +600,8 @@ client.on(Events.InteractionCreate, async (i) => {
         // =====================================================
         // ОБРАБОТКА НОВОЙ СИСТЕМЫ СБОРОВ
         // =====================================================
-        
-        // 1. Выбор фракции (кнопки в панели сборов)
         if (i.isButton() && i.customId.startsWith("group_start_")) {
-            const faction = i.customId.replace("group_start_", ""); // ballas или darkness
+            const faction = i.customId.replace("group_start_", ""); 
             
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
@@ -555,12 +627,10 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // 2. Выбор мероприятия (выпадающее меню сборов)
         if (i.isStringSelectMenu() && i.customId.startsWith("group_select_")) {
             const faction = i.customId.replace("group_select_", "");
             const activity = i.values[0];
 
-            // Передаем переменные напрямую в ID модалки
             const modal = new ModalBuilder()
                 .setCustomId(`group_modal_code_${faction}_${activity}`)
                 .setTitle("Код группы");
@@ -579,15 +649,12 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // 3. Обработка модалки с кодом группы
         if (i.isModalSubmit() && i.customId.startsWith("group_modal_code_")) {
             const parts = i.customId.split("_");
-            const faction = parts[3];   // ballas или darkness
-            const activity = parts[4];  // цеха, контент и т.д.
+            const faction = parts[3];
+            const activity = parts[4];
 
             const code = i.fields.getTextInputValue("group_code_input").toUpperCase();
-            
-            // Определяем ID сервера в зависимости от фракции
             const guildId = faction === "ballas" ? "1504470399268819115" : "1458190222042075251";
 
             await i.reply({ 
@@ -595,11 +662,27 @@ client.on(Events.InteractionCreate, async (i) => {
                 ephemeral: true 
             });
             
-            // Запускаем рассылку
             startMassNotification(guildId, activity, code);
             return;
         }
 
+
+        // =====================================================
+        // ОБРАБОТКА МОДАЛОК "ПРОВЕРКИ ИГРОКА"
+        // =====================================================
+        if (i.isModalSubmit() && i.customId.startsWith("check_candidate_")) {
+            const candidateId = i.fields.getTextInputValue("candidate_id").trim();
+            
+            try {
+                const member = await i.guild.members.fetch(candidateId);
+                if (member) {
+                    await i.reply({ content: `✅ Пользователь <@${candidateId}> **НАХОДИТСЯ** на сервере! Отчет можно принимать.`, ephemeral: true });
+                }
+            } catch (error) {
+                await i.reply({ content: `❌ Пользователь с ID \`${candidateId}\` **НЕ НАЙДЕН** на сервере. Возможно, он вышел или ID указан неверно.`, ephemeral: true });
+            }
+            return;
+        }
 
         // =====================================================
         // СТАРАЯ СИСТЕМА ЗАЯВОК И ОСТАЛЬНОЕ
@@ -608,7 +691,6 @@ client.on(Events.InteractionCreate, async (i) => {
         const config = SERVERS[i.guild.id];
         if (!config) return;
 
-        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -636,21 +718,14 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
-            console.log(`[LOG] [${INSTANCE_ID}] Пользователь ${i.user.tag} отправил модалку.`);
-
-            if (modalLocks.has(i.user.id)) {
-                console.log(`[LOG] [${INSTANCE_ID}] Сработал замок! Отклоняю дубликат запроса.`);
-                return;
-            }
+            if (modalLocks.has(i.user.id)) return;
             modalLocks.add(i.user.id);
             setTimeout(() => modalLocks.delete(i.user.id), 5000);
 
             const type = i.customId.replace("apply_modal_", "");
             const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
 
-            console.log(`[LOG] [${INSTANCE_ID}] Проверяю наличие канала ${expectedChannelName}...`);
             await i.guild.channels.fetch().catch(() => null);
 
             const existingChannel = i.guild.channels.cache.find(c => 
@@ -659,12 +734,9 @@ client.on(Events.InteractionCreate, async (i) => {
             );
 
             if (existingChannel) {
-                console.log(`[LOG] [${INSTANCE_ID}] Канал уже существует, отменяю создание.`);
                 await i.reply({ content: `⚠️ Ваша заявка уже создана: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
                 return;
             }
-
-            console.log(`[LOG] [${INSTANCE_ID}] Всё чисто. Начинаю создание канала...`);
 
             const data = {
                 type,
@@ -692,17 +764,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
             const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
-${data.q1}
-
-**ИМЯ И ВОЗРАСТ (В РЕАЛЕЕ)**
-${data.q2}
-
-**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
-${data.q3}
-
-**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
-${data.q4}`;
+            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**\n${data.q1}\n\n**ИМЯ И ВОЗРАСТ (В РЕАЛЕЕ)**\n${data.q2}\n\n**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**\n${data.q3}\n\n**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**\n${data.q4}`;
 
             if (type !== "academy") {
                 embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
@@ -731,7 +793,6 @@ ${data.q4}`;
             return;
         }
 
-        // ОБРАБОТКА ВЫБОРА ВОЙСА (ДЛЯ ОБЗВОНА)
         if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
             const targetId = i.customId.replace("call_voice_", "");
             const voiceChannelId = i.values[0];
@@ -762,14 +823,12 @@ ${data.q4}`;
             return;
         }
 
-        // ОБРАБОТКА КНОПОК
         if (i.isButton()) {
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
 
             const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
             
-            // Исключения: Кнопки выбора фракции для сбора (у них нет проверки на config.ALLOWED_ROLES)
             if (parts[0] === "group" && parts[1] === "start") return;
 
             if (!hasPermission) {
@@ -777,22 +836,53 @@ ${data.q4}`;
                 return;
             }
 
-            // Кнопки отчетов скриншотов
-            if (parts[0] === "accept" || parts[0] === "reject") {
+            // =====================================================
+            // КНОПКИ ОТЧЕТОВ СКРИНШОТОВ (АУДИТ РЕКРУТЕРОВ)
+            // =====================================================
+            if (parts[0] === "accept" || parts[0] === "reject" || parts[0] === "check") {
                 const action = parts[0];
                 const targetId = parts[1];
-                const embed = EmbedBuilder.from(i.message.embeds[0]);
 
+                // КНОПКА: ПРОВЕРИТЬ
+                if (action === "check") {
+                    const modal = new ModalBuilder()
+                        .setCustomId(`check_candidate_${targetId}`)
+                        .setTitle("Проверка кандидата");
+
+                    const input = new TextInputBuilder()
+                        .setCustomId("candidate_id")
+                        .setLabel("Введите Discord ID кандидата")
+                        .setPlaceholder("Например: 123456789012345678")
+                        .setRequired(true)
+                        .setStyle(TextInputStyle.Short);
+
+                    modal.addComponents(new ActionRowBuilder().addComponents(input));
+                    await i.showModal(modal);
+                    return;
+                }
+
+                // КНОПКА: ОТКЛОНИТЬ
+                if (action === "reject") {
+                    // Удаляем сообщение из канала аудита
+                    await i.message.delete().catch(() => null);
+                    return;
+                }
+
+                // КНОПКА: ПРИНЯТЬ
                 if (action === "accept") {
+                    const embed = EmbedBuilder.from(i.message.embeds[0]);
+                    
+                    // Обновляем баланс рекрутера в базе
                     salary[targetId] = (salary[targetId] || 0) + 1000;
                     saveDB(salary);
-                    embed.setColor("Green").setTitle("📸 Отчёт одобрен");
+                    
+                    embed.setColor("Green").setTitle("📸 Отчёт рекрутера одобрен");
                     await i.update({ embeds: [embed], components: [] });
-                } else {
-                    embed.setColor("Red").setTitle("📸 Отчёт отклонён");
-                    await i.update({ embeds: [embed], components: [] });
+
+                    // Обновляем общий эмбед в канале зарплат
+                    await updateSalaryEmbed(client, i.guild.id);
+                    return;
                 }
-                return;
             }
 
             // Кнопки управления заявками (app)
@@ -812,21 +902,17 @@ ${data.q4}`;
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
                     await targetMember.roles.add(rolesToAdd).catch(() => null);
 
-                    // Закрытие тикета для создателя (удаление прав на просмотр)
                     await i.channel.permissionOverwrites.edit(targetId, {
                         ViewChannel: false,
                         SendMessages: false
                     }).catch(() => null);
 
-                    // Переименовываем канал в закрытый
                     const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "");
                     await i.channel.setName(`closed-${cleanName}`).catch(() => null);
 
-                    // Обновляем эмбед сообщения
                     embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
                     await i.update({ embeds: [embed], components: [] });
 
-                    // Запрашиваем скриншот отчета у администратора
                     await i.channel.send({
                         content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **отправьте сюда скриншот с планшета**, чтобы зафиксировать отчёт в аудите и закрыть тикет.`
                     });
