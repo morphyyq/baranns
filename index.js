@@ -5,7 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 
-// Генерируем уникальный ID для этой запущенной копии бота
 const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
 
 const {
@@ -124,7 +123,6 @@ const DB_FILE = path.join(__dirname, "salary.json");
 function loadDB() {
     try {
         const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-        // Если старая структура (просто объекты ID: balance), конвертируем в новую
         if (!data.balances) {
             return { balances: data, lastReset: Date.now() };
         }
@@ -181,7 +179,6 @@ async function updateSalaryMessage(guildId) {
     
     embed.setDescription(desc);
 
-    // Ищем прошлое сообщение в канале ЗП, чтобы не спамить
     const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
     const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title === "💰 Зарплаты рекрутов") : null;
 
@@ -194,17 +191,14 @@ async function updateSalaryMessage(guildId) {
 
 function checkWeeklyReset() {
     const now = new Date();
-    // 1 означает Понедельник
     if (now.getDay() === 1) {
         const lastResetDate = new Date(db.lastReset);
-        // Проверяем, сбрасывали ли мы уже СЕГОДНЯ, чтобы не сбрасывать каждый час в понедельник
         if (lastResetDate.getDate() !== now.getDate() || lastResetDate.getMonth() !== now.getMonth()) {
             console.log(`[SYSTEM] Наступил понедельник! Обнуляю зарплаты рекрутов...`);
             db.balances = {};
             db.lastReset = now.getTime();
             saveDB(db);
             
-            // Обновляем таблицы на всех серверах
             for (const guildId of Object.keys(SERVERS)) {
                 updateSalaryMessage(guildId);
             }
@@ -366,14 +360,12 @@ client.once(Events.ClientReady, async () => {
         console.error(`[BOT ERROR] [${INSTANCE_ID}] Не удалось зарегистрировать команды:`, e);
     }
 
-    // Запускаем сервисы
     await updateOnlineMonitor();
-    setInterval(updateOnlineMonitor, 60000); // Онлайн раз в минуту
+    setInterval(updateOnlineMonitor, 60000);
     
     checkWeeklyReset();
-    setInterval(checkWeeklyReset, 3600000); // Проверка обнуления ЗП каждый час
+    setInterval(checkWeeklyReset, 3600000); 
 
-    // Обновляем сообщения с зарплатой при старте
     for (const guildId of Object.keys(SERVERS)) {
         updateSalaryMessage(guildId);
     }
@@ -423,16 +415,14 @@ client.on(Events.MessageCreate, async (msg) => {
 
             const auditChannel = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
             if (auditChannel) {
-                const file = new AttachmentBuilder(att.url, { name: att.name || "tablet_screen.png" });
-                
+                // ИСПОЛЬЗУЕМ ПРЯМОЙ URL КАРТИНКИ, ЧТОБЫ ИЗБЕЖАТЬ ДВОЙНОГО СООБЩЕНИЯ
                 const auditEmbed = new EmbedBuilder()
                     .setTitle("📋 Ожидает проверки: Отчёт по принятой заявке")
                     .setDescription(`👤 **Администратор (Рекрут):** <@${msg.author.id}>\n👤 **Принятый кандидат:** ${candidateText}\n📂 **Тикет:** \`${msg.channel.name}\``)
-                    .setImage(`attachment://${file.name}`)
+                    .setImage(att.url)
                     .setColor("Yellow")
                     .setTimestamp();
 
-                // Добавляем кнопки управления отчетом с тикета
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId(`audit_accept_${msg.author.id}`)
@@ -448,7 +438,7 @@ client.on(Events.MessageCreate, async (msg) => {
                         .setStyle(ButtonStyle.Primary)
                 );
 
-                await auditChannel.send({ embeds: [auditEmbed], files: [file], components: [row] });
+                await auditChannel.send({ embeds: [auditEmbed], components: [row] });
             }
 
             await msg.channel.send("✅ Отчёт успешно отправлен в аудит на проверку! Тикет удаляется...");
@@ -472,12 +462,10 @@ client.on(Events.MessageCreate, async (msg) => {
             const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
             if (!audit) return;
 
-            const file = new AttachmentBuilder(att.url, { name: att.name || "screen.png" });
-
             const embed = new EmbedBuilder()
                 .setTitle("📸 Новый отчёт")
                 .setDescription(`👤 Рекрут: <@${msg.author.id}>`)
-                .setImage(`attachment://${file.name}`)
+                .setImage(att.url)
                 .setColor("Blue")
                 .setTimestamp();
 
@@ -492,7 +480,7 @@ client.on(Events.MessageCreate, async (msg) => {
                     .setStyle(ButtonStyle.Danger)
             );
 
-            await audit.send({ embeds: [embed], files: [file], components: [row] });
+            await audit.send({ embeds: [embed], components: [row] });
 
             setTimeout(async () => {
                 try { await msg.delete(); } catch {}
@@ -512,7 +500,6 @@ client.on(Events.InteractionCreate, async (i) => {
     try {
         if (!i.guild) return;
 
-        // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             const config = SERVERS[i.guild.id];
             
@@ -608,9 +595,6 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // =====================================================
-        // ОБРАБОТКА СБОРОВ (ГРУППЫ)
-        // =====================================================
         if (i.isButton() && i.customId.startsWith("group_start_")) {
             const faction = i.customId.replace("group_start_", "");
             
@@ -677,10 +661,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-
-        // =====================================================
-        // СИСТЕМА ЗАЯВОК (АКАДЕМИЯ / КАПТЫ)
-        // =====================================================
         const config = SERVERS[i.guild.id];
         if (!config) return;
 
@@ -809,10 +789,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-
-        // =====================================================
-        // ОБРАБОТКА КНОПОК
-        // =====================================================
         if (i.isButton()) {
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
@@ -825,12 +801,10 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
             
-            // НОВЫЕ КНОПКИ: Проверка скриншота с планшета из закрытого тикета
             if (parts[0] === "audit") {
                 const action = parts[1];
-                const targetId = parts[2]; // Это либо ID рекрута (accept/reject) либо ID кандидата (verify)
+                const targetId = parts[2]; 
 
-                // Кнопка "Проверить"
                 if (action === "verify") {
                     if (targetId === "unknown") {
                         await i.reply({ content: "⚠️ Не удалось определить ID кандидата из заявки.", ephemeral: true });
@@ -846,17 +820,15 @@ client.on(Events.InteractionCreate, async (i) => {
                     return;
                 }
                 
-                // Кнопка "Отказать"
                 if (action === "reject") {
                     await i.message.delete().catch(() => null);
-                    // Можем отправить эфемерный ответ, чтобы Discord не выдавал "Ошибка взаимодействия"
                     try { await i.reply({ content: "🗑️ Отчёт отклонён и удалён.", ephemeral: true }); } catch {}
                     return;
                 }
 
-                // Кнопка "Принять"
                 if (action === "accept") {
-                    db.balances[targetId] = (db.balances[targetId] || 0) + 1000;
+                    // ЗДЕСЬ УВЕЛИЧЕНО НАЧИСЛЕНИЕ С 1000 ДО 10000
+                    db.balances[targetId] = (db.balances[targetId] || 0) + 10000;
                     saveDB(db);
 
                     const embed = EmbedBuilder.from(i.message.embeds[0])
@@ -865,26 +837,24 @@ client.on(Events.InteractionCreate, async (i) => {
 
                     await i.update({ embeds: [embed], components: [] });
                     
-                    // Обновляем общий Embed с зарплатами
                     await updateSalaryMessage(i.guild.id);
                     return;
                 }
             }
 
-            // СТАРЫЕ КНОПКИ: Обычные отчеты из канала SCREEN
             if (parts[0] === "accept" || parts[0] === "reject") {
                 const action = parts[0];
                 const targetId = parts[1];
                 const embed = EmbedBuilder.from(i.message.embeds[0]);
 
                 if (action === "accept") {
-                    db.balances[targetId] = (db.balances[targetId] || 0) + 1000;
+                    // ЗДЕСЬ ТАКЖЕ УВЕЛИЧЕНО НАЧИСЛЕНИЕ С 1000 ДО 10000
+                    db.balances[targetId] = (db.balances[targetId] || 0) + 10000;
                     saveDB(db);
                     
                     embed.setColor("Green").setTitle("📸 Отчёт одобрен");
                     await i.update({ embeds: [embed], components: [] });
                     
-                    // Тоже обновляем Embed с зарплатами при обычном отчете
                     await updateSalaryMessage(i.guild.id);
                 } else {
                     embed.setColor("Red").setTitle("📸 Отчёт отклонён");
@@ -893,7 +863,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            // Управление заявками (app)
             if (parts[0] === "app") {
                 const action = parts[1];
                 const targetId = parts[2];
