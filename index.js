@@ -4,6 +4,7 @@ process.env.LANG = "en_US.UTF-8";
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
+const mongoose = require("mongoose");
 
 // Генерируем уникальный ID для этой запущенной копии бота
 const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -119,26 +120,42 @@ const SERVERS = {
 
 
 // =====================================================
-// DATABASE
+// DATABASE (MONGODB ATLAS)
 // =====================================================
-const DB_FILE = path.join(__dirname, "salary.json");
+let salary = { balances: {}, recruits: {} };
 
-function loadDB() {
+if (process.env.MONGODB_URI) {
+    mongoose.connect(process.env.MONGODB_URI)
+        .then(() => console.log(`[DB] [${INSTANCE_ID}] Успешно подключено к MongoDB Atlas!`))
+        .catch(err => console.error(`[DB ERROR] [${INSTANCE_ID}] Ошибка подключения к базе:`, err));
+}
+
+const DataSchema = new mongoose.Schema({
+    id: { type: String, default: "main" },
+    data: { type: mongoose.Schema.Types.Mixed, default: { balances: {}, recruits: {} } }
+}, { minimize: false });
+
+const DataModel = mongoose.model("Data", DataSchema);
+
+async function loadDB() {
     try {
-        const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-        if (!data.balances) data.balances = {};
-        if (!data.recruits) data.recruits = {};
-        return data;
-    } catch {
-        return { balances: {}, recruits: {} };
+        let doc = await DataModel.findOne({ id: "main" });
+        if (!doc) {
+            doc = await DataModel.create({ id: "main", data: { balances: {}, recruits: {} } });
+        }
+        salary = doc.data;
+    } catch (e) {
+        console.error("[DB ERROR] Ошибка при загрузке:", e);
     }
 }
 
-function saveDB(data) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+async function saveDB(currentData) {
+    try {
+        await DataModel.updateOne({ id: "main" }, { $set: { data: currentData } }, { upsert: true });
+    } catch (e) {
+        console.error("[DB ERROR] Ошибка при сохранении:", e);
+    }
 }
-
-let salary = loadDB();
 
 
 // =====================================================
@@ -281,6 +298,8 @@ async function updateOnlineMonitor() {
 client.once(Events.ClientReady, async () => {
     console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
+    await loadDB(); // СКАЧИВАЕМ ДАННЫЕ ИЗ БАЗЫ ПРИ ЗАПУСКЕ
+
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
@@ -322,7 +341,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
             }
 
             delete salary.recruits[member.id];
-            saveDB(salary);
+            await saveDB(salary);
             await updateSalaryEmbed(member.guild);
         }
     } catch (e) {
@@ -483,7 +502,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 salary.balances = {};
                 salary.recruits = {};
-                saveDB(salary);
+                await saveDB(salary);
                 await updateSalaryEmbed(i.guild);
 
                 await i.reply({ content: "✅ Все балансы и привязки игроков были полностью аннулированы!", ephemeral: true });
@@ -941,7 +960,7 @@ ${data.q4}`;
                         salary.recruits[candidateId] = recruiterId;
                     }
 
-                    saveDB(salary);
+                    await saveDB(salary);
                     await updateSalaryEmbed(i.guild);
 
                     await i.message.delete().catch(() => null);
@@ -964,7 +983,7 @@ ${data.q4}`;
 
                 if (action === "accept") {
                     salary.balances[targetId] = (salary.balances[targetId] || 0) + 1000;
-                    saveDB(salary);
+                    await saveDB(salary);
                     await updateSalaryEmbed(i.guild);
                     embed.setColor("Green").setTitle("📸 Отчёт одобрен");
                     await i.update({ embeds: [embed], components: [] });
