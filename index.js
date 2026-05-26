@@ -1,10 +1,8 @@
 require("dotenv").config();
 process.env.LANG = "en_US.UTF-8";
 
-const fs = require("fs");
-const path = require("path");
 const express = require("express");
-const mongoose = require("mongoose");
+const mongoose = require("mongoose"); // ДОБАВЛЕН MONGOOSE
 
 // Генерируем уникальный ID для этой запущенной копии бота
 const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -120,40 +118,44 @@ const SERVERS = {
 
 
 // =====================================================
-// DATABASE (MONGODB ATLAS)
+// DATABASE (MONGODB)
 // =====================================================
+// Создаем схему для базы данных (чтобы хранить всё в одном документе)
+const SystemDataSchema = new mongoose.Schema({
+    singleton: { type: String, default: "SYSTEM" },
+    balances: { type: mongoose.Schema.Types.Mixed, default: {} },
+    recruits: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, { minimize: false }); // minimize: false сохраняет пустые объекты
+
+const SystemData = mongoose.model("SystemData", SystemDataSchema);
+
+// Локальный кэш для быстрой работы бота
 let salary = { balances: {}, recruits: {} };
-
-if (process.env.MONGODB_URI) {
-    mongoose.connect(process.env.MONGODB_URI)
-        .then(() => console.log(`[DB] [${INSTANCE_ID}] Успешно подключено к MongoDB Atlas!`))
-        .catch(err => console.error(`[DB ERROR] [${INSTANCE_ID}] Ошибка подключения к базе:`, err));
-}
-
-const DataSchema = new mongoose.Schema({
-    id: { type: String, default: "main" },
-    data: { type: mongoose.Schema.Types.Mixed, default: { balances: {}, recruits: {} } }
-}, { minimize: false });
-
-const DataModel = mongoose.model("Data", DataSchema);
 
 async function loadDB() {
     try {
-        let doc = await DataModel.findOne({ id: "main" });
-        if (!doc) {
-            doc = await DataModel.create({ id: "main", data: { balances: {}, recruits: {} } });
+        let data = await SystemData.findOne({ singleton: "SYSTEM" });
+        if (!data) {
+            // Если базы еще нет, создаем пустышку
+            data = await SystemData.create({ singleton: "SYSTEM", balances: {}, recruits: {} });
         }
-        salary = doc.data;
+        salary.balances = data.balances || {};
+        salary.recruits = data.recruits || {};
+        console.log(`[DB] [${INSTANCE_ID}] Данные зарплат и рекрутов загружены из MongoDB.`);
     } catch (e) {
-        console.error("[DB ERROR] Ошибка при загрузке:", e);
+        console.error(`[DB ERROR] [${INSTANCE_ID}] Ошибка загрузки данных:`, e);
     }
 }
 
-async function saveDB(currentData) {
+async function saveDB(data = salary) {
     try {
-        await DataModel.updateOne({ id: "main" }, { $set: { data: currentData } }, { upsert: true });
+        await SystemData.findOneAndUpdate(
+            { singleton: "SYSTEM" },
+            { balances: data.balances, recruits: data.recruits },
+            { upsert: true }
+        );
     } catch (e) {
-        console.error("[DB ERROR] Ошибка при сохранении:", e);
+        console.error(`[DB ERROR] [${INSTANCE_ID}] Ошибка сохранения данных:`, e);
     }
 }
 
@@ -298,8 +300,6 @@ async function updateOnlineMonitor() {
 client.once(Events.ClientReady, async () => {
     console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
-    await loadDB(); // СКАЧИВАЕМ ДАННЫЕ ИЗ БАЗЫ ПРИ ЗАПУСКЕ
-
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
@@ -341,7 +341,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
             }
 
             delete salary.recruits[member.id];
-            await saveDB(salary);
+            saveDB(salary);
             await updateSalaryEmbed(member.guild);
         }
     } catch (e) {
@@ -502,7 +502,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 salary.balances = {};
                 salary.recruits = {};
-                await saveDB(salary);
+                saveDB(salary);
                 await updateSalaryEmbed(i.guild);
 
                 await i.reply({ content: "✅ Все балансы и привязки игроков были полностью аннулированы!", ephemeral: true });
@@ -960,7 +960,7 @@ ${data.q4}`;
                         salary.recruits[candidateId] = recruiterId;
                     }
 
-                    await saveDB(salary);
+                    saveDB(salary);
                     await updateSalaryEmbed(i.guild);
 
                     await i.message.delete().catch(() => null);
@@ -983,7 +983,7 @@ ${data.q4}`;
 
                 if (action === "accept") {
                     salary.balances[targetId] = (salary.balances[targetId] || 0) + 1000;
-                    await saveDB(salary);
+                    saveDB(salary);
                     await updateSalaryEmbed(i.guild);
                     embed.setColor("Green").setTitle("📸 Отчёт одобрен");
                     await i.update({ embeds: [embed], components: [] });
@@ -1089,6 +1089,25 @@ process.on("SIGINT", shutdown);
 
 
 // =====================================================
-// LOGIN
+// INIT & LOGIN
 // =====================================================
-client.login(process.env.TOKEN);
+async function startBot() {
+    try {
+        console.log(`[DB] [${INSTANCE_ID}] Попытка подключения к базе данных...`);
+        // Если база долго не отвечает, можно убрать process.env.MONGO_URI и проверить строку подключения
+        await mongoose.connect(process.env.MONGO_URI); 
+        console.log(`[DB] [${INSTANCE_ID}] Успешно подключено к кластеру MongoDB!`);
+        
+        // Загружаем данные из БД в кэш
+        await loadDB();
+        
+        // Логинимся в Дискорд
+        client.login(process.env.TOKEN);
+    } catch (error) {
+        console.error("[STARTUP ERROR] Критическая ошибка при запуске бота:", error);
+        process.exit(1);
+    }
+}
+
+// ЗАПУСК БОТА
+startBot();
