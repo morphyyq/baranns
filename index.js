@@ -29,6 +29,7 @@ const {
     ChannelType
 } = require("discord.js");
 
+
 // =====================================================
 // KEEP ALIVE
 // =====================================================
@@ -39,6 +40,7 @@ app.get("/", (_, res) => {
 });
 
 app.listen(process.env.PORT || 3000);
+
 
 // =====================================================
 // CLIENT
@@ -60,6 +62,7 @@ const client = new Client({
 client.on(Events.Error, (error) => {
     console.error(`[GLOBAL DISCORD ERROR] [${INSTANCE_ID}]`, error);
 });
+
 
 // =====================================================
 // CONFIG
@@ -114,6 +117,7 @@ const SERVERS = {
     }
 };
 
+
 // =====================================================
 // DATABASE
 // =====================================================
@@ -136,12 +140,14 @@ function saveDB(data) {
 
 let salary = loadDB();
 
+
 // =====================================================
 // MEMORY & LOCKS
 // =====================================================
 const processed = new Set();
 const applications = new Map();
 const modalLocks = new Set();
+
 
 // =====================================================
 // SALARY EMBED SYSTEM (Обновление единой ведомости выплат)
@@ -189,8 +195,9 @@ async function updateSalaryEmbed(guild) {
     }
 }
 
+
 // =====================================================
-// MONITORING SYSTEM (Раздельные сообщения с эмбедами)
+// MONITORING SYSTEM (Раздельные эмбеды для ролей)
 // =====================================================
 async function updateOnlineMonitor() {
     try {
@@ -203,10 +210,9 @@ async function updateOnlineMonitor() {
             const channel = await guild.channels.fetch(config.CHANNELS.MONITOR).catch(() => null);
             if (!channel) continue;
 
-            // Запрашиваем актуальный кэш участников
             await guild.members.fetch();
 
-            const newEmbedsData = [];
+            const embedsArray = [];
             let totalOnline = 0;
             let totalMembersCount = 0;
 
@@ -214,19 +220,11 @@ async function updateOnlineMonitor() {
                 .setTitle("📊 Мониторинг активного состава семьи")
                 .setColor("#2b2d31")
                 .setTimestamp();
-            
-            // Добавляем главный эмбед первым в очередь
-            newEmbedsData.push(mainEmbed);
 
             for (const roleData of config.MONITOR_ROLES) {
                 const role = guild.roles.cache.get(roleData.id);
                 if (!role) {
-                    newEmbedsData.push(
-                        new EmbedBuilder()
-                            .setTitle(`❌ ${roleData.name}`)
-                            .setDescription("Роль не найдена на сервере")
-                            .setColor("Red")
-                    );
+                    embedsArray.push(new EmbedBuilder().setTitle(`❌ ${roleData.name}`).setDescription("Роль не найдена на сервере").setColor("Red"));
                     continue;
                 }
 
@@ -234,19 +232,11 @@ async function updateOnlineMonitor() {
                 let roleOnline = 0;
                 const members = Array.from(role.members.values());
 
-                // Сортируем: сначала те, кто онлайн, затем оффлайн
-                members.sort((a, b) => {
-                    const aOnline = a.presence && a.presence.status !== "offline" ? 1 : 0;
-                    const bOnline = b.presence && b.presence.status !== "offline" ? 1 : 0;
-                    return bOnline - aOnline;
-                });
-
                 if (members.length === 0) {
                     listString = "*В этой роли никого нет*";
                 } else {
                     members.forEach(member => {
                         totalMembersCount++;
-                        // Проверяем статус. Если presence нет - значит оффлайн
                         const isOnline = member.presence && member.presence.status !== "offline";
                         const statusEmoji = isOnline ? "🟢" : "🔴";
                         
@@ -259,46 +249,31 @@ async function updateOnlineMonitor() {
                     });
                 }
 
-                // Разбиваем текст, если он превышает лимит Discord (4000 символов из 4096 возможных)
-                const chunks = listString.match(/[\s\S]{1,4000}/g) || ["*Ошибка обработки списка*"];
-                
-                chunks.forEach((chunk, index) => {
-                    const embed = new EmbedBuilder()
-                        .setTitle(`👥 ${roleData.name} ${index > 0 ? \`(Часть \${index + 1})\` : \`[В сети: \${roleOnline}/\${members.length}]\`}`)
-                        .setDescription(chunk)
-                        .setColor("#2b2d31");
-                    newEmbedsData.push(embed);
-                });
+                const roleEmbed = new EmbedBuilder()
+                    .setTitle(`👥 ${roleData.name} [В сети: ${roleOnline}/${members.length}]`)
+                    .setDescription(listString)
+                    .setColor("#2b2d31");
+
+                embedsArray.push(roleEmbed);
             }
 
-            // Обновляем описание главного эмбеда после подсчета всех ролей
-            newEmbedsData[0].setDescription(`📈 **Общий онлайн выбранных ролей:** \`${totalOnline} из ${totalMembersCount}\``);
+            mainEmbed.setDescription(`📈 **Общий онлайн выбранных ролей:** \`${totalOnline} из ${totalMembersCount}\``);
+            embedsArray.unshift(mainEmbed);
 
-            // Получаем последние сообщения бота в канале
             const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-            // Берем только сообщения бота и переворачиваем массив (от старых к новым)
-            let botMessages = messages ? Array.from(messages.filter(m => m.author.id === client.user.id).values()).reverse() : [];
+            const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title?.startsWith("📊 Мониторинг")) : null;
 
-            // Синхронизируем сообщения (редактируем существующие или отправляем новые)
-            for (let i = 0; i < newEmbedsData.length; i++) {
-                if (botMessages[i]) {
-                    // Если сообщение уже есть - просто меняем в нем эмбед
-                    await botMessages[i].edit({ embeds: [newEmbedsData[i]] }).catch(() => null);
-                } else {
-                    // Если сообщений не хватает - отправляем новое отдельное сообщение
-                    await channel.send({ embeds: [newEmbedsData[i]] }).catch(() => null);
-                }
-            }
-
-            // Удаляем лишние старые сообщения бота, если ролей (или людей) стало меньше
-            for (let i = newEmbedsData.length; i < botMessages.length; i++) {
-                await botMessages[i].delete().catch(() => null);
+            if (botMessage) {
+                await botMessage.edit({ embeds: embedsArray }).catch(() => null);
+            } else {
+                await channel.send({ embeds: embedsArray }).catch(() => null);
             }
         }
     } catch (error) {
-        console.error(`[MONITOR ERROR]`, error);
+        console.error(`[MONITOR ERROR] [${INSTANCE_ID}] Error updating monitor:`, error);
     }
 }
+
 
 // =====================================================
 // READY & REGISTER COMMANDS
@@ -332,6 +307,7 @@ client.once(Events.ClientReady, async () => {
     setInterval(updateOnlineMonitor, 60000);
 });
 
+
 // =====================================================
 // GUILD MEMBER REMOVE (Выход принятого игрока из семьи)
 // =====================================================
@@ -353,6 +329,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
         console.error("[ERROR AT MEMBER REMOVE]", e);
     }
 });
+
 
 // =====================================================
 // MESSAGE SYSTEM
@@ -477,6 +454,7 @@ client.on(Events.MessageCreate, async (msg) => {
         console.log(`[MESSAGE ERROR] [${INSTANCE_ID}]`, e);
     }
 });
+
 
 // =====================================================
 // INTERACTIONS
@@ -740,6 +718,7 @@ client.on(Events.InteractionCreate, async (i) => {
             }
             return;
         }
+
 
         // =====================================================
         // ОБРАБОТКА ИНТЕРАКЦИЙ СИСТЕМЫ АУДИТА И ЗАЯВОК
@@ -1077,6 +1056,7 @@ ${data.q4}`;
     }
 });
 
+
 // =====================================================
 // SHUTDOWN
 // =====================================================
@@ -1087,6 +1067,7 @@ const shutdown = () => {
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+
 
 // =====================================================
 // LOGIN
