@@ -542,7 +542,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-if (i.commandName === "panel") {
+            if (i.commandName === "panel") {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 
@@ -579,9 +579,8 @@ if (i.commandName === "panel") {
                     )
                     .setColor("#2b2d31");
 
-                // ЧТОБЫ ДОБАВИТЬ КАРТИНКУ-БАННЕР КАК НА СКРИНШОТЕ:
-                // Раскомментируйте строку ниже и вставьте прямую ссылку на ваш баннер Darkness
-                // embed.setImage("https://url_вашей_картинки.png");
+                // Чтобы добавить баннер сверху, как в оригинале, укажите на него ссылку здесь:
+                // embed.setImage("https://url_вашего_баннера_darkness.png");
 
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
@@ -718,7 +717,7 @@ if (i.commandName === "panel") {
 
             if (logChannel) {
                 const rejectEmbed = new EmbedBuilder()
-                    .setTitle("❌ Отказ по заявке в семью")
+                    .setTitle("❌ Отказ по заявке в тему")
                     .setDescription(`👤 **Кандидат:** <@${targetId}> (\`${targetId}\`)\n🔒 **Модератор:** <@${i.user.id}>\n📝 **Причина отказа:** ${reason}`)
                     .setColor("Red")
                     .setTimestamp();
