@@ -1,8 +1,9 @@
 require("dotenv").config();
 process.env.LANG = "en_US.UTF-8";
 
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
-const mongoose = require("mongoose"); // ДОБАВЛЕН MONGOOSE
 
 // Генерируем уникальный ID для этой запущенной копии бота
 const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -118,46 +119,26 @@ const SERVERS = {
 
 
 // =====================================================
-// DATABASE (MONGODB)
+// DATABASE
 // =====================================================
-// Создаем схему для базы данных (чтобы хранить всё в одном документе)
-const SystemDataSchema = new mongoose.Schema({
-    singleton: { type: String, default: "SYSTEM" },
-    balances: { type: mongoose.Schema.Types.Mixed, default: {} },
-    recruits: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { minimize: false }); // minimize: false сохраняет пустые объекты
+const DB_FILE = path.join(__dirname, "salary.json");
 
-const SystemData = mongoose.model("SystemData", SystemDataSchema);
-
-// Локальный кэш для быстрой работы бота
-let salary = { balances: {}, recruits: {} };
-
-async function loadDB() {
+function loadDB() {
     try {
-        let data = await SystemData.findOne({ singleton: "SYSTEM" });
-        if (!data) {
-            // Если базы еще нет, создаем пустышку
-            data = await SystemData.create({ singleton: "SYSTEM", balances: {}, recruits: {} });
-        }
-        salary.balances = data.balances || {};
-        salary.recruits = data.recruits || {};
-        console.log(`[DB] [${INSTANCE_ID}] Данные зарплат и рекрутов загружены из MongoDB.`);
-    } catch (e) {
-        console.error(`[DB ERROR] [${INSTANCE_ID}] Ошибка загрузки данных:`, e);
+        const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+        if (!data.balances) data.balances = {};
+        if (!data.recruits) data.recruits = {};
+        return data;
+    } catch {
+        return { balances: {}, recruits: {} };
     }
 }
 
-async function saveDB(data = salary) {
-    try {
-        await SystemData.findOneAndUpdate(
-            { singleton: "SYSTEM" },
-            { balances: data.balances, recruits: data.recruits },
-            { upsert: true }
-        );
-    } catch (e) {
-        console.error(`[DB ERROR] [${INSTANCE_ID}] Ошибка сохранения данных:`, e);
-    }
+function saveDB(data) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
+
+let salary = loadDB();
 
 
 // =====================================================
@@ -1089,25 +1070,6 @@ process.on("SIGINT", shutdown);
 
 
 // =====================================================
-// INIT & LOGIN
+// LOGIN
 // =====================================================
-async function startBot() {
-    try {
-        console.log(`[DB] [${INSTANCE_ID}] Попытка подключения к базе данных...`);
-        // Если база долго не отвечает, можно убрать process.env.MONGO_URI и проверить строку подключения
-        await mongoose.connect(process.env.MONGO_URI); 
-        console.log(`[DB] [${INSTANCE_ID}] Успешно подключено к кластеру MongoDB!`);
-        
-        // Загружаем данные из БД в кэш
-        await loadDB();
-        
-        // Логинимся в Дискорд
-        client.login(process.env.TOKEN);
-    } catch (error) {
-        console.error("[STARTUP ERROR] Критическая ошибка при запуске бота:", error);
-        process.exit(1);
-    }
-}
-
-// ЗАПУСК БОТА
-startBot();
+client.login(process.env.TOKEN);
