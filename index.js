@@ -276,58 +276,6 @@ async function updateOnlineMonitor() {
 
 
 // =====================================================
-// СИСТЕМА ОПОВЕЩЕНИЯ (МАССОВЫЙ СБОР)
-// =====================================================
-async function startMassNotification(guildId, activity, groupCode) {
-    const config = SERVERS[guildId];
-    if (!config) return;
-
-    const guild = await client.guilds.fetch(guildId).catch(() => null);
-    if (!guild) return;
-
-    const channel = await guild.channels.fetch(config.CHANNELS.SBOR).catch(() => null);
-    if (!channel) return;
-
-    const pingString = `@everyone ${config.PING_ROLES.map(r => `<@&${r}>`).join(" ")}`;
-    const messageContent = `${pingString}\n\n## Сбор на ${activity}, всем быть, кого не будет = 2 варна. Группа: ${groupCode} ##`;
-
-    let cycles = 0;
-    
-    const executeSpam = async () => {
-        cycles++;
-        
-        try {
-            for (let i = 0; i < 3; i++) {
-                await channel.send(messageContent).catch(() => null);
-            }
-        } catch (e) {
-            console.error("Ошибка отправки сбора в канал:", e);
-        }
-
-        try {
-            await guild.members.fetch();
-            const targetMembers = guild.members.cache.filter(m => 
-                config.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot
-            );
-
-            for (const [id, member] of targetMembers) {
-                await member.send(`🔔 **Внимание!**\n${messageContent}`).catch(() => null);
-            }
-        } catch (e) {
-            console.error("Ошибка рассылки в ЛС:", e);
-        }
-
-        if (cycles >= 3) {
-            clearInterval(spamInterval);
-        }
-    };
-
-    executeSpam();
-    const spamInterval = setInterval(executeSpam, 300000);
-}
-
-
-// =====================================================
 // READY & REGISTER COMMANDS
 // =====================================================
 client.once(Events.ClientReady, async () => {
@@ -601,11 +549,10 @@ client.on(Events.InteractionCreate, async (i) => {
                 const embed = new EmbedBuilder()
                     .setTitle("📡 Управление сборами групп")
                     .setDescription(
-                        "Используйте кнопки ниже для запуска массового оповещения состава.\n\n" +
+                        "Используйте кнопки ниже для запуска ручного управления сборами состава.\n\n" +
                         "**Функционал:**\n" +
-                        "• 3 сообщения в канал сбора\n" +
-                        "• 3 рассылки в ЛС (раз в 5 минут)\n" +
-                        "• Упоминание всех причастных ролей\n\n" +
+                        "• Выбор типа мероприятия\n" +
+                        "• Ручная панель с кнопками отправки в канал и ЛС\n\n" +
                         "**Darkness & Ballas Central Control**"
                     )
                     .setColor("#2b2d31");
@@ -630,7 +577,7 @@ client.on(Events.InteractionCreate, async (i) => {
         }
 
         // =====================================================
-        // ОБРАБОТКА НОВОЙ СИСТЕМЫ СБОРОВ
+        // ОБРАБОТКА НОВОЙ СИСТЕМЫ СБОРОВ (РУЧНОЙ РЕЖИМ)
         // =====================================================
         if (i.isButton() && i.customId.startsWith("group_start_")) {
             const faction = i.customId.replace("group_start_", "");
@@ -681,6 +628,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
+        // ОБРАБОТКА ОТВЕТА ИЗ МОДАЛКИ (ГЕНЕРАЦИЯ ПУЛЬТА УПРАВЛЕНИЯ)
         if (i.isModalSubmit() && i.customId.startsWith("group_modal_code_")) {
             const parts = i.customId.split("_");
             const faction = parts[3];   
@@ -689,12 +637,85 @@ client.on(Events.InteractionCreate, async (i) => {
             const code = i.fields.getTextInputValue("group_code_input").toUpperCase();
             const guildId = faction === "ballas" ? "1504470399268819115" : "1458190222042075251";
 
-            await i.reply({ 
-                content: `✅ Запущено оповещение для **${faction}** на **${activity}**. Код группы: **${code}**.\n\nБот отправит по 3 сообщения в канал и 1 в ЛС сейчас, а также повторит это через 5 и 10 минут.`, 
-                ephemeral: true 
-            });
-            
-            startMassNotification(guildId, activity, code);
+            const controlEmbed = new EmbedBuilder()
+                .setTitle("⚙️ Панель ручного управления сбором")
+                .setDescription(`**Фракция:** ${faction.toUpperCase()}\n**Мероприятие:** ${activity}\n**Код группы:** \`${code}\`\n\nИспользуйте кнопки ниже для рассылки. Кнопку в канал можно нажимать много раз для спама.`)
+                .setColor("Yellow");
+
+            const controlRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`sbor_channel_${guildId}_${activity}_${code}`)
+                    .setLabel("Отправить в канал")
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji("📣"),
+                new ButtonBuilder()
+                    .setCustomId(`sbor_dms_${guildId}_${activity}_${code}`)
+                    .setLabel("Отправить в ЛС")
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji("📩"),
+                new ButtonBuilder()
+                    .setCustomId("sbor_cancel")
+                    .setLabel("Отменить / Скрыть")
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji("❌")
+            );
+
+            await i.reply({ embeds: [controlEmbed], components: [controlRow], ephemeral: true });
+            return;
+        }
+
+        // ОБРАБОТКА КНОПОК ПУЛЬТА УПРАВЛЕНИЯ
+        if (i.isButton() && i.customId.startsWith("sbor_")) {
+            if (i.customId === "sbor_cancel") {
+                await i.update({ content: "✅ Панель управления сбором закрыта.", embeds: [], components: [] });
+                return;
+            }
+
+            const parts = i.customId.split("_");
+            const action = parts[1];
+            const guildId = parts[2];
+            const activity = parts[3];
+            const code = parts[4];
+
+            const config = SERVERS[guildId];
+            if (!config) return;
+
+            const targetGuild = await client.guilds.fetch(guildId).catch(() => null);
+            if (!targetGuild) return;
+
+            const pingString = `@everyone ${config.PING_ROLES.map(r => `<@&${r}>`).join(" ")}`;
+            const messageContent = `${pingString}\n\n## Сбор на ${activity}, всем быть, кого не будет = 2 варна. Группа: ${code} ##`;
+
+            if (action === "channel") {
+                const targetChannel = await targetGuild.channels.fetch(config.CHANNELS.SBOR).catch(() => null);
+                if (targetChannel) {
+                    await targetChannel.send(messageContent).catch(() => null);
+                    await i.reply({ content: "✅ 1 сообщение успешно отправлено в канал сбора!", ephemeral: true });
+                } else {
+                    await i.reply({ content: "❌ Ошибка: канал сбора не найден на сервере.", ephemeral: true });
+                }
+            } else if (action === "dms") {
+                await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
+                try {
+                    await targetGuild.members.fetch();
+                    const targetMembers = targetGuild.members.cache.filter(m => 
+                        config.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot
+                    );
+
+                    let successCount = 0;
+                    for (const [id, member] of targetMembers) {
+                        try {
+                            await member.send(`🔔 **Внимание!**\n${messageContent}`);
+                            successCount++;
+                        } catch (e) {
+                            // Игнорируем пользователей с закрытым ЛС
+                        }
+                    }
+                    await i.editReply({ content: `✅ Рассылка завершена! Доставлено: ${successCount} сообщений.` });
+                } catch (e) {
+                    await i.editReply({ content: "❌ Произошла ошибка при попытке рассылки в ЛС." });
+                }
+            }
             return;
         }
 
