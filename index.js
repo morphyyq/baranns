@@ -103,7 +103,20 @@ const SERVERS = {
         ],
         PING_ROLES: [ // Роли для пинга при сборе
             "1458410756453306490"
-        ]
+        ],
+        // НОВАЯ СИСТЕМА РАНГОВ И ОТЧЕТОВ
+        REPORT_CHANNEL: "1513649382396919979",
+        REPORT_ADMIN_ROLES: [
+            "1471553901433192532", 
+            "1458192704524648701", 
+            "1458192781217370173"
+        ],
+        RANK_ROLES: {
+            TEST: "1513647909965533377",
+            ACADEMY: "1458485405769797848",
+            YOUNG: "1458485351424331903",
+            DARKNESS: "1458485277495656553"
+        }
     },
     // НОВЫЙ СЕРВЕР BALLAS
     "1504470399268819115": {
@@ -128,9 +141,10 @@ function loadDB() {
         const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
         if (!data.balances) data.balances = {};
         if (!data.recruits) data.recruits = {};
+        if (!data.reports) data.reports = {}; // Добавлено для отчетов
         return data;
     } catch {
-        return { balances: {}, recruits: {} };
+        return { balances: {}, recruits: {}, reports: {} };
     }
 }
 
@@ -285,7 +299,14 @@ client.once(Events.ClientReady, async () => {
         new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить панель управления сборами"),
-        new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков")
+        new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
+        new SlashCommandBuilder().setName("report_panel").setDescription("Отправить панель подачи отчетов"),
+        new SlashCommandBuilder()
+            .setName("rank")
+            .setDescription("Посмотреть свою статистику отчетов")
+            .addUserOption(option => 
+                option.setName("user").setDescription("Игрок (оставьте пустым для себя)").setRequired(false)
+            )
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -372,7 +393,6 @@ client.on(Events.MessageCreate, async (msg) => {
 
             const auditChannel = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
             if (auditChannel) {
-                // Фиксированное имя скриншота без лишнего текста, исключающее дубли-дефекты над эмбедом
                 const file = new AttachmentBuilder(att.url, { name: "screen.png" });
                 
                 const auditEmbed = new EmbedBuilder()
@@ -463,10 +483,10 @@ client.on(Events.InteractionCreate, async (i) => {
     try {
         if (!i.guild) return;
 
+        const config = SERVERS[i.guild.id];
+
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
-            const config = SERVERS[i.guild.id];
-            
             if (i.commandName === "balance") {
                 const currentBal = salary.balances[i.user.id] || 0;
                 await i.reply({ content: `💰 Баланс: $${currentBal.toLocaleString()}`, ephemeral: true });
@@ -574,7 +594,186 @@ client.on(Events.InteractionCreate, async (i) => {
                 await i.reply({ content: "✅ Панель сборов отправлена!", ephemeral: true });
                 return;
             }
+
+            // =====================================================
+            // НОВЫЕ КОМАНДЫ (СИСТЕМА ОТЧЕТОВ)
+            // =====================================================
+            if (i.commandName === "report_panel") {
+                if (!config) return;
+                const hasPermission = config.REPORT_ADMIN_ROLES && config.REPORT_ADMIN_ROLES.some(role => i.member.roles.cache.has(role));
+                if (!hasPermission) return i.reply({ content: "❌ Нет прав.", ephemeral: true });
+    
+                const channel = await client.channels.fetch(config.REPORT_CHANNEL).catch(() => null);
+                if (!channel) return i.reply({ content: "❌ Канал для отчетов не найден.", ephemeral: true });
+    
+                const embed = new EmbedBuilder()
+                    .setTitle("📋 Система отчётов и повышений")
+                    .setDescription("Здесь вы можете оставить свой отчёт о посещении МП для повышения ранга.\n\n**Система повышений:**\n🔸 **TEST ➔ Academy**: 5 отчётов\n🔸 **Academy ➔ Young**: 10 отчётов суммарно\n🔸 **Young ➔ Darkness**: 20 отчётов суммарно\n\nНажмите кнопку ниже, чтобы подать отчёт.")
+                    .setColor("#2b2d31");
+    
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId("report_submit_btn").setLabel("Подать отчет").setStyle(ButtonStyle.Success).setEmoji("📝")
+                );
+    
+                await channel.send({ embeds: [embed], components: [row] });
+                return i.reply({ content: "✅ Панель отправлена!", ephemeral: true });
+            }
+    
+            if (i.commandName === "rank") {
+                if (!config) return;
+                const targetUser = i.options.getUser("user") || i.user;
+                const userReports = salary.reports[targetUser.id] || 0;
+                const targetMember = await i.guild.members.fetch(targetUser.id).catch(() => null);
+    
+                let nextGoal = "Максимальный ранг";
+                let progressStr = `🌟 Одобренных отчетов: **${userReports}**`;
+    
+                if (targetMember && config.RANK_ROLES) {
+                    if (targetMember.roles.cache.has(config.RANK_ROLES.TEST)) nextGoal = "5 отчетов для Academy";
+                    else if (targetMember.roles.cache.has(config.RANK_ROLES.ACADEMY)) nextGoal = "10 отчетов для Young";
+                    else if (targetMember.roles.cache.has(config.RANK_ROLES.YOUNG)) nextGoal = "20 отчетов для Darkness";
+                }
+    
+                const embed = new EmbedBuilder()
+                    .setTitle(`📊 Статистика отчетов: ${targetUser.username}`)
+                    .setThumbnail(targetUser.displayAvatarURL())
+                    .setDescription(`${progressStr}\n🎯 Текущая цель: **${nextGoal}**`)
+                    .setColor("Blue");
+    
+                return i.reply({ embeds: [embed], ephemeral: false });
+            }
         }
+
+
+        // =====================================================
+        // СИСТЕМА ОТЧЕТОВ (КНОПКИ И МОДАЛКИ)
+        // =====================================================
+
+        // Нажатие на кнопку "Подать отчет" (Открытие модалки)
+        if (i.isButton() && i.customId === "report_submit_btn") {
+            const modal = new ModalBuilder()
+                .setCustomId("report_modal_submit")
+                .setTitle("Подача отчета на повышение");
+
+            const staticInput = new TextInputBuilder()
+                .setCustomId("report_static")
+                .setLabel("Введите ваш статик (ID)")
+                .setPlaceholder("Например: 12345")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            const proofInput = new TextInputBuilder()
+                .setCustomId("report_proof")
+                .setLabel("Ссылка на доказательство")
+                .setPlaceholder("Ссылка на Imgur, Yapx или скриншот из Discord")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(staticInput),
+                new ActionRowBuilder().addComponents(proofInput)
+            );
+
+            await i.showModal(modal);
+            return;
+        }
+
+        // Обработка модалки отчета (Создание тикета)
+        if (i.isModalSubmit() && i.customId === "report_modal_submit") {
+            const staticId = i.fields.getTextInputValue("report_static");
+            const proofLink = i.fields.getTextInputValue("report_proof");
+
+            const expectedName = `rep-${i.user.username}`.toLowerCase().replace(/[^a-z0-9-_]/g, '');
+            
+            // Проверка, есть ли уже открытый тикет отчета
+            const existingChannel = i.guild.channels.cache.find(c => c.name === expectedName && c.parentId === config.CHANNELS.CATEGORY);
+            if (existingChannel) {
+                return i.reply({ content: `⚠️ У вас уже есть открытый тикет отчета: <#${existingChannel.id}>`, ephemeral: true });
+            }
+
+            const channel = await i.guild.channels.create({
+                name: expectedName,
+                type: ChannelType.GuildText,
+                parent: config.CHANNELS.CATEGORY,
+                permissionOverwrites: [
+                    { id: i.guild.id, deny: ["ViewChannel"] },
+                    { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
+                    ...config.REPORT_ADMIN_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
+                ]
+            });
+
+            const embed = new EmbedBuilder()
+                .setTitle("📝 Новый отчёт на проверку")
+                .setDescription(`👤 **Игрок:** <@${i.user.id}>\n🆔 **Статик:** \`${staticId}\`\n🔗 **Доказательство:** [Кликни, чтобы открыть](${proofLink})`)
+                .setImage(proofLink.startsWith("http") ? proofLink : null)
+                .setColor("Yellow")
+                .setTimestamp();
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`rep_acc_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`rep_rej_${i.user.id}`).setLabel("Отказать").setStyle(ButtonStyle.Danger)
+            );
+
+            await channel.send({ content: config.REPORT_ADMIN_ROLES.map(r => `<@&${r}>`).join(" "), embeds: [embed], components: [row] });
+            return i.reply({ content: `✅ Ваш отчет отправлен на проверку! Канал: <#${channel.id}>`, ephemeral: true });
+        }
+
+        // Обработка кнопок в тикете отчета
+        if (i.isButton() && i.customId.startsWith("rep_")) {
+            const hasPermission = config.REPORT_ADMIN_ROLES && config.REPORT_ADMIN_ROLES.some(role => i.member.roles.cache.has(role));
+            if (!hasPermission) return i.reply({ content: "❌ Нет прав для проверки отчетов.", ephemeral: true });
+
+            const action = i.customId.split("_")[1];
+            const targetId = i.customId.split("_")[2];
+            const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
+
+            if (action === "rej") {
+                if (targetMember) {
+                    await targetMember.send(`❌ **Привет!** Твой отчет на сервере **${i.guild.name}** был отклонен администратором <@${i.user.id}>.`).catch(() => null);
+                }
+                await i.reply({ content: "❌ Отчет отклонен. Тикет закрывается..." });
+                setTimeout(() => i.channel.delete().catch(() => null), 3000);
+                return;
+            }
+
+            if (action === "acc") {
+                salary.reports[targetId] = (salary.reports[targetId] || 0) + 1;
+                saveDB(salary);
+                const currentCount = salary.reports[targetId];
+
+                let promotionMsg = null;
+                
+                if (targetMember && config.RANK_ROLES) {
+                    if (targetMember.roles.cache.has(config.RANK_ROLES.TEST) && currentCount >= 5) {
+                        promotionMsg = `📈 Игрок <@${targetId}> набрал **5** отчетов! Пожалуйста, повысьте его до **Academy** (<@&${config.RANK_ROLES.ACADEMY}>).`;
+                    } else if (targetMember.roles.cache.has(config.RANK_ROLES.ACADEMY) && currentCount >= 10) {
+                        promotionMsg = `📈 Игрок <@${targetId}> набрал **10** отчетов! Пожалуйста, повысьте его до **Young** (<@&${config.RANK_ROLES.YOUNG}>).`;
+                    } else if (targetMember.roles.cache.has(config.RANK_ROLES.YOUNG) && currentCount >= 20) {
+                        promotionMsg = `📈 Игрок <@${targetId}> набрал **20** отчетов! Пожалуйста, повысьте его до **Darkness** (<@&${config.RANK_ROLES.DARKNESS}>).`;
+                    }
+
+                    await targetMember.send(`✅ **Привет!** Твой отчет одобрен! У тебя сейчас **${currentCount}** одобренных отчетов. Команда для проверки: \`/rank\``).catch(() => null);
+                }
+
+                if (promotionMsg) {
+                    try {
+                        const allMembers = await i.guild.members.fetch();
+                        const adminsToNotify = allMembers.filter(m => config.REPORT_ADMIN_ROLES.some(r => m.roles.cache.has(r)) && !m.user.bot);
+                        
+                        adminsToNotify.forEach(admin => {
+                            admin.send(promotionMsg).catch(() => null);
+                        });
+                    } catch (e) {
+                        console.log("Не удалось разослать уведомления о повышении", e);
+                    }
+                }
+
+                await i.reply({ content: `✅ Отчет принят! Всего отчетов у игрока: **${currentCount}**. Тикет закрывается...` });
+                setTimeout(() => i.channel.delete().catch(() => null), 3000);
+                return;
+            }
+        }
+
 
         // =====================================================
         // ОБРАБОТКА НОВОЙ СИСТЕМЫ СБОРОВ (РУЧНОЙ РЕЖИМ)
@@ -677,17 +876,17 @@ client.on(Events.InteractionCreate, async (i) => {
             const activity = parts[3];
             const code = parts[4];
 
-            const config = SERVERS[guildId];
-            if (!config) return;
+            const targetConfig = SERVERS[guildId];
+            if (!targetConfig) return;
 
             const targetGuild = await client.guilds.fetch(guildId).catch(() => null);
             if (!targetGuild) return;
 
-            const pingString = `@everyone ${config.PING_ROLES.map(r => `<@&${r}>`).join(" ")}`;
+            const pingString = `@everyone ${targetConfig.PING_ROLES.map(r => `<@&${r}>`).join(" ")}`;
             const messageContent = `${pingString}\n\n## Сбор на ${activity}, всем быть, кого не будет = 2 варна. Группа: ${code} ##`;
 
             if (action === "channel") {
-                const targetChannel = await targetGuild.channels.fetch(config.CHANNELS.SBOR).catch(() => null);
+                const targetChannel = await targetGuild.channels.fetch(targetConfig.CHANNELS.SBOR).catch(() => null);
                 if (targetChannel) {
                     await targetChannel.send(messageContent).catch(() => null);
                     await i.reply({ content: "✅ 1 сообщение успешно отправлено в канал сбора!", ephemeral: true });
@@ -699,7 +898,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 try {
                     await targetGuild.members.fetch();
                     const targetMembers = targetGuild.members.cache.filter(m => 
-                        config.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot
+                        targetConfig.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot
                     );
 
                     let successCount = 0;
@@ -744,7 +943,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        const config = SERVERS[i.guild.id];
         if (!config) return;
 
         // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ ЗАЯВКИ)
