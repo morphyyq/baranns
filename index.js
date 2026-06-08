@@ -29,7 +29,6 @@ const {
     ChannelType
 } = require("discord.js");
 
-
 // =====================================================
 // KEEP ALIVE
 // =====================================================
@@ -40,7 +39,6 @@ app.get("/", (_, res) => {
 });
 
 app.listen(process.env.PORT || 3000);
-
 
 // =====================================================
 // CLIENT
@@ -63,7 +61,6 @@ client.on(Events.Error, (error) => {
     console.error(`[GLOBAL DISCORD ERROR] [${INSTANCE_ID}]`, error);
 });
 
-
 // =====================================================
 // CONFIG
 // =====================================================
@@ -76,8 +73,9 @@ const SERVERS = {
             PANEL: "1458410655697731730",
             CATEGORY: "1458410646956806196",
             AUDIT_APP: "1464575195418460417",
-            MONITOR: "1507787906700415076", // Канал для постоянного мониторинга онлайна
-            SBOR: "1458481307351781709" // Канал сбора Darkness
+            MONITOR: "1507787906700415076",
+            SBOR: "1458481307351781709",
+            PROMO_CHANNEL: "1513649382396919979" // Канал отчетов на повышение
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -95,28 +93,31 @@ const SERVERS = {
             "1458410756453306490",
             "1475114013611528274"
         ],
-        // Роли для вывода в таблице мониторинга
         MONITOR_ROLES: [
             { id: "1468704257606684712", name: "Рекруты" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1507798049416675531", name: "RP Состав" }
         ],
-        PING_ROLES: [ // Роли для пинга при сборе
+        PING_ROLES: [
             "1458410756453306490"
-        ]
+        ],
+        PROMO_ROLES: { // Роли для системы повышений
+            TEST: "1513647909965533377",
+            ACADEMY: "1458485405769797848",
+            YOUNG: "1458485351424331903",
+            DARKNESS: "1458485277495656553"
+        }
     },
-    // НОВЫЙ СЕРВЕР BALLAS
     "1504470399268819115": {
         CHANNELS: {
-            SBOR: "1504574610564321290" // Канал сбора Ballas
+            SBOR: "1504574610564321290"
         },
-        PING_ROLES: [ // Роли баллас
+        PING_ROLES: [
             "1504470450305241288", 
             "1505558808766971944"
         ]
     }
 };
-
 
 // =====================================================
 // DATABASE
@@ -128,7 +129,7 @@ function loadDB() {
         const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
         if (!data.balances) data.balances = {};
         if (!data.recruits) data.recruits = {};
-        if (!data.reports) data.reports = {}; // Хранилище отчетов
+        if (!data.reports) data.reports = {}; // Новая база для отчетов на повышение
         return data;
     } catch {
         return { balances: {}, recruits: {}, reports: {} };
@@ -141,14 +142,12 @@ function saveDB(data) {
 
 let salary = loadDB();
 
-
 // =====================================================
 // MEMORY & LOCKS
 // =====================================================
 const processed = new Set();
 const applications = new Map();
 const modalLocks = new Set();
-
 
 // =====================================================
 // SALARY EMBED SYSTEM
@@ -195,7 +194,6 @@ async function updateSalaryEmbed(guild) {
         console.error(`[SALARY EMBED ERROR]`, error);
     }
 }
-
 
 // =====================================================
 // MONITORING SYSTEM
@@ -275,7 +273,6 @@ async function updateOnlineMonitor() {
     }
 }
 
-
 // =====================================================
 // READY & REGISTER COMMANDS
 // =====================================================
@@ -287,9 +284,11 @@ client.once(Events.ClientReady, async () => {
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить панель управления сборами"),
         new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
-        new SlashCommandBuilder().setName("rank").setDescription("Посмотреть количество одобренных отчетов")
-            .addUserOption(opt => opt.setName("user").setDescription("Игрок (опционально)").setRequired(false)),
-        new SlashCommandBuilder().setName("promo_panel").setDescription("Установить панель системы повышений")
+        new SlashCommandBuilder().setName("promo_panel").setDescription("Отправить панель системы повышений"),
+        new SlashCommandBuilder()
+            .setName("rank")
+            .setDescription("Посмотреть статистику принятых отчетов")
+            .addUserOption(option => option.setName("user").setDescription("Пользователь (опционально)"))
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -310,7 +309,6 @@ client.once(Events.ClientReady, async () => {
     await updateOnlineMonitor();
     setInterval(updateOnlineMonitor, 60000);
 });
-
 
 // =====================================================
 // GUILD MEMBER REMOVE
@@ -334,7 +332,6 @@ client.on(Events.GuildMemberRemove, async (member) => {
     }
 });
 
-
 // =====================================================
 // MESSAGE SYSTEM
 // =====================================================
@@ -345,48 +342,6 @@ client.on(Events.MessageCreate, async (msg) => {
         const config = SERVERS[msg.guild.id];
         if (!config) return;
 
-        // ПЕРЕХВАТ СКРИНШОТОВ В ТИКЕТАХ ОТЧЕТОВ СИСТЕМЫ ПОВЫШЕНИЯ
-        if (msg.channel.name?.startsWith("report-")) {
-            const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
-            if (hasPermission) return; // Игнорируем админов
-
-            const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-            
-            if (!att) {
-                await msg.delete().catch(() => null);
-                const warn = await msg.channel.send(`<@${msg.author.id}>, ❌ Пожалуйста, отправьте **фотографию (скриншот)** доказательств.`);
-                setTimeout(() => warn.delete().catch(() => null), 5000);
-                return;
-            }
-
-            const staticId = msg.channel.topic || "Неизвестно";
-            const file = new AttachmentBuilder(att.url, { name: "report.png" });
-
-            const reportEmbed = new EmbedBuilder()
-                .setTitle("📸 Отчет на проверку")
-                .setDescription(`👤 **Игрок:** <@${msg.author.id}>\n🔢 **Статик:** \`${staticId}\``)
-                .setImage(`attachment://report.png`)
-                .setColor("#2b2d31")
-                .setTimestamp();
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`promo_accept_${msg.author.id}`)
-                    .setLabel("Принять")
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId(`promo_reject_${msg.author.id}`)
-                    .setLabel("Отказать")
-                    .setStyle(ButtonStyle.Danger)
-            );
-
-            await msg.delete().catch(() => null);
-            await msg.channel.send({ embeds: [reportEmbed], files: [file], components: [row] });
-            
-            await msg.channel.permissionOverwrites.edit(msg.author.id, { SendMessages: false }).catch(() => null);
-            return;
-        }
-
         if (msg.content === "/balance") {
             const currentBal = salary.balances[msg.author.id] || 0;
             return msg.reply({
@@ -394,7 +349,7 @@ client.on(Events.MessageCreate, async (msg) => {
             });
         }
 
-        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
+        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКТЕТЕ
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
@@ -452,7 +407,7 @@ client.on(Events.MessageCreate, async (msg) => {
             return;
         }
 
-        // SCREEN SYSTEM (Для обычных отчетов рекрутов)
+        // SCREEN SYSTEM
         if (config.CHANNELS && msg.channel.id === config.CHANNELS.SCREEN) {
             if (processed.has(msg.id)) return;
             processed.add(msg.id);
@@ -500,7 +455,6 @@ client.on(Events.MessageCreate, async (msg) => {
     }
 });
 
-
 // =====================================================
 // INTERACTIONS
 // =====================================================
@@ -518,59 +472,44 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
+            // РАНГ: ПРОСМОТР СТАТИСТИКИ
             if (i.commandName === "rank") {
-                const targetUser = i.options.getUser("user") || i.user;
-                const count = salary.reports[targetUser.id] || 0;
-                await i.reply({ 
-                    content: `📊 Количество одобренных отчетов у <@${targetUser.id}>: **${count}**`, 
-                    ephemeral: true 
-                });
-                return;
-            }
-
-            if (i.commandName === "promo_panel") {
                 if (!config) return;
-                const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
-                if (!hasPermission) return i.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+                const targetUser = i.options.getUser("user") || i.user;
+                const reportsCount = salary.reports[targetUser.id] || 0;
+                const targetMember = await i.guild.members.fetch(targetUser.id).catch(() => null);
+                
+                let nextGoalText = "Максимальный ранг";
+                let progress = reportsCount;
+                let maxProgress = 0;
+
+                if (targetMember) {
+                    if (targetMember.roles.cache.has(config.PROMO_ROLES.TEST)) { 
+                        maxProgress = 5; 
+                        nextGoalText = "До повышения на 2 ранг (Academy)"; 
+                    }
+                    else if (targetMember.roles.cache.has(config.PROMO_ROLES.ACADEMY)) { 
+                        maxProgress = 10; 
+                        nextGoalText = "До повышения на 3 ранг (Young)"; 
+                    }
+                    else if (targetMember.roles.cache.has(config.PROMO_ROLES.YOUNG)) { 
+                        maxProgress = 20; 
+                        nextGoalText = "До повышения на 4 ранг (Darkness)"; 
+                    }
+                }
 
                 const embed = new EmbedBuilder()
-                    .setTitle("📈 Система повышений Darkness")
-                    .setDescription(
-`**С 1 ранга (TEST) > 2 ранг (Academy)**
-• 5 МП
-• фамилия Darkness
-• знание правил семьи/сервера
-• актив в игре больше 3 часов в день
-
-**С 2 ранга (Academy) > 3 ранг (Young)**
-• 10 МП суммарно
-• уметь слушать коллы
-• адекватная игра
-• отсутствие серьёзных нарушений
-
-**С 3 ранга (Young) > 4 ранг (Darkness)**
-• 20 МП суммарно
-• стабильный онлайн
-• помощь семье
-• хорошая коммуникация
-
-**С 4 ранга (Darkness) > 5 ранг (Recruit)**
-• уметь грамотно общаться
-• стабильный онлайн (3+ часа в день)
-• адекватность и ответственность`
+                    .setTitle(`📊 Статистика отчетов: ${targetUser.username}`)
+                    .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
+                    .setDescription(`Пользователь <@${targetUser.id}> имеет следующую статистику в системе повышений:`)
+                    .addFields(
+                        { name: "📁 Принятых отчетов", value: `\`${reportsCount}\``, inline: true },
+                        { name: `🎯 ${nextGoalText}`, value: maxProgress > 0 ? `\`${reportsCount} / ${maxProgress}\`` : "Максимум", inline: true }
                     )
-                    .setColor("#2b2d31");
+                    .setColor("#2b2d31")
+                    .setTimestamp();
 
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId("promo_start")
-                        .setLabel("Подать отчет")
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji("📝")
-                );
-
-                await i.channel.send({ embeds: [embed], components: [row] });
-                await i.reply({ content: "✅ Панель повышений установлена", ephemeral: true });
+                await i.reply({ embeds: [embed], ephemeral: true });
                 return;
             }
 
@@ -584,10 +523,66 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 salary.balances = {};
                 salary.recruits = {};
+                // salary.reports = {}; // Можно раскомментировать, если при /delete нужно очищать и отчеты на повышение
                 saveDB(salary);
                 await updateSalaryEmbed(i.guild);
 
                 await i.reply({ content: "✅ Все балансы и привязки игроков были полностью аннулированы!", ephemeral: true });
+                return;
+            }
+
+            // ПАНЕЛЬ СИСТЕМЫ ПОВЫШЕНИЙ
+            if (i.commandName === "promo_panel") {
+                if (!config || !config.CHANNELS || !config.CHANNELS.PROMO_CHANNEL) return;
+                const channel = await client.channels.fetch(config.CHANNELS.PROMO_CHANNEL).catch(()=>null);
+                if (!channel) return i.reply({ content: "❌ Канал отчетов не найден.", ephemeral: true });
+
+                const embed = new EmbedBuilder()
+                    .setTitle("📈 Система повышений семьи Darkness")
+                    .setDescription(`
+Отправляйте отчёты о проделанной работе для автоматического повышения в должности.
+
+### 🔹 С 1 ранга (TEST) > 2 ранг (Academy)
+• **5 МП** (отчетов)
+• Фамилия Darkness
+• Знание правил семьи/сервера
+• Актив в игре больше 3 часов в день
+
+### 🔹 С 2 ранга (Academy) > 3 ранг (Young)
+• **10 МП** суммарно
+• Уметь слушать коллы и адекватная игра
+• Отсутствие серьёзных нарушений
+
+### 🔹 С 3 ранга (Young) > 4 ранг (Darkness)
+• **20 МП** суммарно
+• Стабильный онлайн (больше 100 часов в игре)
+• Помощь семье, хорошая коммуникация
+
+### 🔹 С 4 ранга (Darkness) > 5 ранг (Recruit)
+• Уметь грамотно общаться, адекватность
+• Стабильный онлайн (3+ часа в день)
+
+━━━━━━━━━━━━━━
+
+⚠️ **ПРАВИЛА ПОДАЧИ ОТЧЕТА:**
+1. В поле "Статик" вводите **строго только цифры**.
+2. В поле "Доказательства" должна быть рабочая **ссылка** (Imgur / YouTube и т.д.).
+3. **Без скриншота/отката отчёт будет моментально отклонён!**
+
+Вы можете проверить свою статистику командой: \`/rank\`
+                    `)
+                    .setColor("#2b2d31");
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("promo_submit_btn")
+                        .setLabel("Подать отчет")
+                        .setEmoji("📄")
+                        .setStyle(ButtonStyle.Success)
+                );
+
+                await channel.send({ embeds: [embed], components: [row] });
+                await i.reply({ content: "✅ Панель системы повышений отправлена!", ephemeral: true });
                 return;
             }
 
@@ -678,126 +673,84 @@ client.on(Events.InteractionCreate, async (i) => {
         }
 
         // =====================================================
-        // ОБРАБОТКА ИНТЕРАКЦИЙ СИСТЕМЫ ПОВЫШЕНИЙ
+        // ОБРАБОТКА СИСТЕМЫ ПОВЫШЕНИЙ (КНОПКИ И МОДАЛКИ)
         // =====================================================
-        if (i.isButton() && i.customId === "promo_start") {
+        if (i.isButton() && i.customId === "promo_submit_btn") {
             const modal = new ModalBuilder()
                 .setCustomId("promo_modal")
-                .setTitle("Отчет на повышение");
+                .setTitle("Подача отчета на повышение");
 
             const staticInput = new TextInputBuilder()
                 .setCustomId("promo_static")
-                .setLabel("Статик игрового персонажа")
-                .setPlaceholder("Например: 21074 (только цифры)")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
+                .setLabel("Ваш игровой статик (ТОЛЬКО ЦИФРЫ)")
+                .setPlaceholder("Пример: 21074")
+                .setMinLength(1)
+                .setMaxLength(10)
+                .setRequired(true)
+                .setStyle(TextInputStyle.Short);
 
-            modal.addComponents(new ActionRowBuilder().addComponents(staticInput));
+            const linkInput = new TextInputBuilder()
+                .setCustomId("promo_link")
+                .setLabel("Ссылка на доказательства (Imgur/Youtube)")
+                .setPlaceholder("https://...")
+                .setRequired(true)
+                .setStyle(TextInputStyle.Short);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(staticInput),
+                new ActionRowBuilder().addComponents(linkInput)
+            );
+
             await i.showModal(modal);
             return;
         }
 
         if (i.isModalSubmit() && i.customId === "promo_modal") {
             const staticId = i.fields.getTextInputValue("promo_static");
-            
+            const link = i.fields.getTextInputValue("promo_link");
+
+            // Валидация
             if (!/^\d+$/.test(staticId)) {
-                await i.reply({ content: "❌ Ошибка: В строке статика должны быть только цифры!", ephemeral: true });
-                return;
+                return i.reply({ content: "❌ **Ошибка:** В поле 'Статик' должны быть только цифры!", ephemeral: true });
+            }
+            if (!link.startsWith("http://") && !link.startsWith("https://")) {
+                return i.reply({ content: "❌ **Ошибка:** Поле 'Доказательства' должно содержать корректную ссылку (начинаться с http/https)!", ephemeral: true });
             }
 
-            const expectedChannelName = `report-${i.user.username}`.toLowerCase().replace(/[^a-z0-9-_]/g, '');
             const config = SERVERS[i.guild.id];
-            
+            // Уникальное название тикета (открывать можно несколько)
+            const randomId = Math.random().toString(36).substring(2, 6);
+            const expectedChannelName = `report-${i.user.username}-${randomId}`.toLowerCase().replace(/[^a-z0-9-_]/g, '');
+
             const channel = await i.guild.channels.create({
                 name: expectedChannelName,
                 type: ChannelType.GuildText,
-                parent: config.CHANNELS.CATEGORY, 
-                topic: staticId, 
+                parent: config.CHANNELS.CATEGORY,
                 permissionOverwrites: [
                     { id: i.guild.id, deny: ["ViewChannel"] },
-                    { id: i.user.id, allow: ["ViewChannel", "SendMessages", "AttachFiles"] },
+                    { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
                     ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
                 ]
             });
 
-            await channel.send({ 
-                content: `<@${i.user.id}>`,
-                embeds: [
-                    new EmbedBuilder()
-                        .setDescription(`Пожалуйста, отправьте сюда **один скриншот** (доказательство) следующим сообщением.`)
-                        .setColor("#2b2d31")
-                ]
-            });
+            const embed = new EmbedBuilder()
+                .setTitle("📝 Новый отчет на повышение")
+                .setDescription(`**Пользователь:** <@${i.user.id}>\n**Статик:** \`${staticId}\`\n\n**Доказательства:**\n${link}`)
+                .setColor("#2b2d31")
+                .setThumbnail(i.user.displayAvatarURL({ dynamic: true }))
+                .setTimestamp();
 
-            await i.reply({ content: `✅ Канал для отчета создан: <#${channel.id}>`, ephemeral: true });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`promo_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success).setEmoji("✅"),
+                new ButtonBuilder().setCustomId(`promo_reject_${i.user.id}`).setLabel("Отказать").setStyle(ButtonStyle.Danger).setEmoji("❌")
+            );
+
+            const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
+            await channel.send({ content: `${rolesPing} | Поступил новый отчет!`, embeds: [embed], components: [row] });
+
+            await i.reply({ content: `✅ Ваш отчет успешно отправлен! Ожидайте проверки в тикете: <#${channel.id}>`, ephemeral: true });
             return;
         }
-
-        if (i.isButton() && i.customId.startsWith("promo_")) {
-            const parts = i.customId.split("_");
-            if (parts.length < 3) return;
-            
-            const action = parts[1]; 
-            const targetId = parts[2];
-            
-            const config = SERVERS[i.guild.id];
-            const hasPermission = config && config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
-            if (!hasPermission) {
-                await i.reply({ content: "❌ У вас нет прав для проверки отчетов.", ephemeral: true });
-                return;
-            }
-
-            const embed = EmbedBuilder.from(i.message.embeds[0]);
-            
-            if (action === "reject") {
-                embed.setColor("Red").setTitle("📸 Отчет отклонен");
-                await i.update({ embeds: [embed], components: [] });
-                await i.channel.send(`❌ Отчет отклонен администратором <@${i.user.id}>.`);
-                
-                const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
-                if (targetMember) {
-                    await targetMember.send("❌ Ваш отчет на повышение был отклонен администрацией.").catch(() => null);
-                }
-                return;
-            }
-
-            if (action === "accept") {
-                salary.reports[targetId] = (salary.reports[targetId] || 0) + 1;
-                saveDB(salary);
-                const currentReports = salary.reports[targetId];
-
-                embed.setColor("Green").setTitle("📸 Отчет одобрен");
-                await i.update({ embeds: [embed], components: [] });
-                await i.channel.send(`✅ Отчет принят администратором <@${i.user.id}>. Текущее количество отчетов: **${currentReports}**`);
-
-                const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
-                if (targetMember) {
-                    const isTest = targetMember.roles.cache.has("1513647909965533377");
-                    const isAcademy = targetMember.roles.cache.has("1458485405769797848");
-                    const isYoung = targetMember.roles.cache.has("1458485351424331903");
-
-                    let shouldPromoteTo = null;
-                    if (isTest && currentReports >= 5) shouldPromoteTo = "Academy (2 ранг)";
-                    else if (isAcademy && currentReports >= 10) shouldPromoteTo = "Young (3 ранг)";
-                    else if (isYoung && currentReports >= 20) shouldPromoteTo = "Darkness (4 ранг)";
-
-                    if (shouldPromoteTo) {
-                        await i.channel.send(`🎉 Игрок набрал нужное количество отчетов для повышения на **${shouldPromoteTo}**! Уведомляю руководство...`);
-                        
-                        const adminRolesIds = ["1471553901433192532", "1458192704524648701", "1458192781217370173"];
-                        const admins = await i.guild.members.fetch().then(members => 
-                            members.filter(m => adminRolesIds.some(r => m.roles.cache.has(r)) && !m.user.bot)
-                        );
-
-                        admins.forEach(async admin => {
-                            await admin.send(`🔔 **Внимание!** Игрок <@${targetId}> набрал нужное количество отчетов и готов к повышению на **${shouldPromoteTo}**!`).catch(() => null);
-                        });
-                    }
-                }
-                return;
-            }
-        }
-
 
         // =====================================================
         // ОБРАБОТКА НОВОЙ СИСТЕМЫ СБОРОВ (РУЧНОЙ РЕЖИМ)
@@ -928,9 +881,7 @@ client.on(Events.InteractionCreate, async (i) => {
                         try {
                             await member.send(`🔔 **Внимание!**\n${messageContent}`);
                             successCount++;
-                        } catch (e) {
-                            // Игнорируем закрытые ЛС
-                        }
+                        } catch (e) {}
                     }
                     await i.editReply({ content: `✅ Рассылка завершена! Доставлено: ${successCount} сообщений.` });
                 } catch (e) {
@@ -939,7 +890,6 @@ client.on(Events.InteractionCreate, async (i) => {
             }
             return;
         }
-
 
         // =====================================================
         // ОБРАБОТКА ИНТЕРАКЦИЙ СИСТЕМЫ АУДИТА И ЗАЯВОК
@@ -1041,17 +991,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
             const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
-${data.q1}
-
-**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
-${data.q2}
-
-**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**
-${data.q3}
-
-**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
-${data.q4}`;
+            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**\n${data.q1}\n\n**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**\n${data.q2}\n\n**ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?**\n${data.q3}\n\n**ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**\n${data.q4}`;
 
             if (type !== "academy") {
                 embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
@@ -1110,14 +1050,90 @@ ${data.q4}`;
             return;
         }
 
+        // ОБРАБОТКА КНОПОК
         if (i.isButton()) {
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
 
-            // Исключения для массовых сборов (обрабатывается выше)
             if (parts[0] === "group" && parts[1] === "start") return;
 
-            // ОБРАБОТКА КНОПОК ПОДТВЕРЖДЕНИЯ В КАНАЛЕ АУДИТА
+            // ОБРАБОТКА КНОПОК АДМИНОВ В ОТЧЕТАХ ПОВЫШЕНИЙ
+            if (parts[0] === "promo") {
+                const action = parts[1];
+                const targetId = parts[2];
+
+                const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+                if (!hasPermission) {
+                    return i.reply({ content: "❌ У вас нет прав для проверки отчетов.", ephemeral: true });
+                }
+
+                const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
+                const embed = EmbedBuilder.from(i.message.embeds[0]);
+
+                if (action === "accept") {
+                    salary.reports[targetId] = (salary.reports[targetId] || 0) + 1;
+                    saveDB(salary);
+                    const count = salary.reports[targetId];
+
+                    embed.setColor("Green")
+                        .setTitle("📝 Отчет принят")
+                        .addFields({ name: "Вердикт", value: `✅ Принято администратором <@${i.user.id}>.\nВсего отчетов у игрока: \`${count}\`` });
+
+                    await i.update({ embeds: [embed], components: [] });
+
+                    // Авто-уведомление руководства, если игрок достиг порога
+                    if (targetMember) {
+                        let shouldPromote = false;
+                        let nextRankText = "";
+
+                        // Если ранг 1 и ровно 5 отчетов
+                        if (targetMember.roles.cache.has(config.PROMO_ROLES.TEST) && count === 5) {
+                            shouldPromote = true;
+                            nextRankText = "2 ранг (Academy)";
+                        } 
+                        // Если ранг 2 и ровно 10 отчетов
+                        else if (targetMember.roles.cache.has(config.PROMO_ROLES.ACADEMY) && count === 10) {
+                            shouldPromote = true;
+                            nextRankText = "3 ранг (Young)";
+                        } 
+                        // Если ранг 3 и ровно 20 отчетов
+                        else if (targetMember.roles.cache.has(config.PROMO_ROLES.YOUNG) && count === 20) {
+                            shouldPromote = true;
+                            nextRankText = "4 ранг (Darkness)";
+                        }
+
+                        if (shouldPromote) {
+                            const notifMsg = `🔔 **Уведомление о повышении!**\nПользователь <@${targetId}> (\`${targetMember.user.username}\`) набрал необходимое количество отчетов (\`${count}\`) для повышения на **${nextRankText}**!\nПожалуйста, повысьте его в игре и выдайте нужную роль в Discord.`;
+
+                            const adminMembers = i.guild.members.cache.filter(m => config.ALLOWED_ROLES.some(r => m.roles.cache.has(r)) && !m.user.bot);
+                            adminMembers.forEach(admin => {
+                                admin.send(notifMsg).catch(() => {});
+                            });
+
+                            await i.channel.send(`🎉 <@${targetId}> достиг цели для повышения на **${nextRankText}**! Руководство автоматически уведомлено в ЛС.`);
+                        }
+                    }
+
+                    setTimeout(() => i.channel.delete().catch(()=>null), 7000);
+                    return;
+                }
+
+                if (action === "reject") {
+                    embed.setColor("Red")
+                        .setTitle("📝 Отчет отклонен")
+                        .addFields({ name: "Вердикт", value: `❌ Отказано администратором <@${i.user.id}>.` });
+
+                    await i.update({ embeds: [embed], components: [] });
+
+                    if (targetMember) {
+                        await targetMember.send(`❌ **Ваш отчет на повышение был отклонен.**\nПроверьте правильность заполнения и предоставленные доказательства. Если есть вопросы — обратитесь к проверяющему: <@${i.user.id}>.`).catch(() => null);
+                    }
+
+                    setTimeout(() => i.channel.delete().catch(()=>null), 7000);
+                    return;
+                }
+            }
+
             if (parts[0] === "audit") {
                 const action = parts[1];
 
@@ -1173,7 +1189,6 @@ ${data.q4}`;
                 return;
             }
 
-            // Старые кнопки обычных отчетов скриншотов
             if (parts[0] === "accept" || parts[0] === "reject") {
                 const action = parts[0];
                 const targetId = parts[1];
@@ -1192,7 +1207,6 @@ ${data.q4}`;
                 return;
             }
 
-            // Кнопки управления тикетом (app)
             if (parts[0] === "app") {
                 const action = parts[1];
                 const targetId = parts[2];
@@ -1273,7 +1287,6 @@ ${data.q4}`;
     }
 });
 
-
 // =====================================================
 // SHUTDOWN
 // =====================================================
@@ -1284,7 +1297,6 @@ const shutdown = () => {
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
-
 
 // =====================================================
 // LOGIN
