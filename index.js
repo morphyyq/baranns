@@ -84,7 +84,9 @@ const SERVERS = {
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
-            "1458192781217370173"
+            "1458192781217370173",
+            "1468704257606684712", // Рекруты
+            "1458484199735689299"  // Роль управления заявками
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
@@ -1241,9 +1243,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 permissionOverwrites: [
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
-                    ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })),
-                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] },
-                    { id: "1458484199735689299", allow: ["ViewChannel", "SendMessages"] }
+                    ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
                 ]
             });
 
@@ -1381,17 +1381,8 @@ ${data.q4}`;
                 }
             }
 
-            // Базовая проверка прав для большинства кнопок
-            let hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
-
-            // Расширяем права специально для кнопок управления тикетами (app_)
-            if (parts[0] === "app") {
-                const extraAppRoles = ["1468704257606684712", "1458484199735689299"];
-                if (extraAppRoles.some(role => member.roles.cache.has(role))) {
-                    hasPermission = true;
-                }
-            }
-
+            // Базовая проверка прав для ВСЕХ кнопок (возвращено к чистому стандарту, т.к. роли теперь в ALLOWED_ROLES)
+            const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
             if (!hasPermission) {
                 await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
                 return;
