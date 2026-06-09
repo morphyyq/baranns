@@ -88,7 +88,8 @@ const SERVERS = {
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
-            "1513647909965533377"
+            "1458485405769797848",
+            "1507798049416675531"
         ],
         CAPTURE_ROLES: [
             "1458410756453306490",
@@ -709,7 +710,7 @@ client.on(Events.InteractionCreate, async (i) => {
 ### 🍸 YOUNG ➔ 🟣 DARKNESS ###
 **Требования:**
 • 20 МП суммарно
-• Стабильный онлайн (больше 100 часов в игре)
+• Стабильный онлайн (больше 100 часов in игре)
 • Помощь семье
 • Хорошая коммуникация
 
@@ -865,7 +866,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТИКЕТА ОТЧЕТА
+        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТТИКЕТА ОТЧЕТА
         if (i.isModalSubmit() && i.customId === "modal_report_submit") {
             const staticIdStr = i.fields.getTextInputValue("report_static_id");
             const proofLink = i.fields.getTextInputValue("report_proof_link");
@@ -1014,7 +1015,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId(`group_select_${faction}`)
-                    .setPlaceholder("Выберите тип мероприятия")
+                    .setPlaceholder("Выберите тип мероприятие")
             );
 
             if (faction === "ballas") {
@@ -1240,7 +1241,9 @@ client.on(Events.InteractionCreate, async (i) => {
                 permissionOverwrites: [
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
-                    ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
+                    ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })),
+                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] },
+                    { id: "1458484199735689299", allow: ["ViewChannel", "SendMessages"] }
                 ]
             });
 
