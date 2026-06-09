@@ -84,7 +84,8 @@ const SERVERS = {
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
-            "1458192781217370173"
+            "1458192781217370173",
+            "1468704257606684712" // Роль Рекруты добавлена сюда, чтобы они могли нажимать на кнопки
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
@@ -1152,7 +1153,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             if (logChannel) {
                 const rejectEmbed = new EmbedBuilder()
-                    .setTitle("❌ Отказ по заявке в семью")
+                    .setTitle("❌ Отказ по заявке в тему")
                     .setDescription(`👤 **Кандидат:** <@${targetId}> (\`${targetId}\`)\n🔒 **Модератор:** <@${i.user.id}>\n📝 **Причина отказа:** ${reason}`)
                     .setColor("Red")
                     .setTimestamp();
@@ -1240,7 +1241,7 @@ client.on(Events.InteractionCreate, async (i) => {
             });
 
             const rolesPing = config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ") : "";
-            const topContent = `${rolesPing} <@&1468704257606684712>\n**Предыдущие заявки:**\nЗаявок не найдено.`; // Добавлен пинг рекрутов
+            const topContent = `${rolesPing} <@&1468704257606684712>\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
             let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
 ${data.q1}
