@@ -1010,7 +1010,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId(`group_select_${faction}`)
-                    .setPlaceholder("Выберите тип мероприятия")
+                    .setPlaceholder("Выберите тип мероприятие")
             );
 
             if (faction === "ballas") {
@@ -1234,12 +1234,13 @@ client.on(Events.InteractionCreate, async (i) => {
                 permissionOverwrites: [
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
-                    ...config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] }))
+                    ...(config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })) : []),
+                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] } // Рекруты получают доступ к чтению тикета
                 ]
             });
 
-            const rolesPing = config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ");
-            const topContent = `${rolesPing}\n**Предыдущие заявки:**\nЗаявок не найдено.`;
+            const rolesPing = config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ") : "";
+            const topContent = `${rolesPing} <@&1468704257606684712>\n**Предыдущие заявки:**\nЗаявок не найдено.`; // Добавлен пинг рекрутов
 
             let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
 ${data.q1}
