@@ -74,7 +74,7 @@ const SERVERS = {
             AUDIT: "1500501911848095906",
             SALARY: "1500515048970522685",
             PANEL: "1458410655697731730",
-            CATEGORY: "1513659194832719962", // Перенаправлено в новую категорию по запросу
+            CATEGORY: "1513659194832719962", 
             AUDIT_APP: "1464575195418460417",
             MONITOR: "1507787906700415076", 
             SBOR: "1458481307351781709",
@@ -84,9 +84,7 @@ const SERVERS = {
         ALLOWED_ROLES: [
             "1471553901433192532",
             "1458192704524648701",
-            "1458192781217370173",
-            "1468704257606684712", // Рекруты
-            "1458484199735689299"  // Роль управления заявками
+            "1458192781217370173"
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
@@ -98,7 +96,6 @@ const SERVERS = {
             "1475114013611528274"
         ],
         MONITOR_ROLES: [
-            // Объединенный РП-Состав из 4 ролей вместо старого отображения
             { id: ["1513647909965533377", "1458485405769797848", "1458485351424331903", "1458485277495656553"], name: "РП Состав" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1468704257606684712", name: "Рекруты" }
@@ -201,7 +198,7 @@ async function updateSalaryEmbed(guild) {
 
 
 // =====================================================
-// MONITORING SYSTEM (С поддержкой массивов ролей)
+// MONITORING SYSTEM
 // =====================================================
 async function updateOnlineMonitor() {
     try {
@@ -233,7 +230,6 @@ async function updateOnlineMonitor() {
                         const r = guild.roles.cache.get(id);
                         if (r) matchedMembers.push(...Array.from(r.members.values()));
                     });
-                    // Убираем дубликаты
                     matchedMembers = [...new Set(matchedMembers)];
                 } else {
                     const role = guild.roles.cache.get(roleData.id);
@@ -330,7 +326,6 @@ async function updateAFKEmbed(guild) {
 // SYNC CROSS-SERVER JOIN ROLES
 // =====================================================
 client.on(Events.GuildMemberAdd, async (member) => {
-    // Если зашел на сервер Ballas (1504470399268819115)
     if (member.guild.id === "1504470399268819115") {
         const darknessGuild = await client.guilds.fetch("1458190222042075251").catch(() => null);
         if (darknessGuild) {
@@ -350,13 +345,13 @@ client.once(Events.ClientReady, async () => {
     console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
     const commands = [
-        new SlashCommandBuilder().setName("panel").setDescription("Отправить панель для подачи заявок"),
+        new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
-        new SlashCommandBuilder().setName("group_panel").setDescription("Отправить панель управления сборами"),
+        new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
         new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
-        new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую панель системы повышений"),
-        new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить панель ручного управления АФК статусом"),
-        new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную панель контроля состава"),
+        new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений"),
+        new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом"),
+        new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава"),
         new SlashCommandBuilder().setName("rank").setDescription("Посмотреть статистику выполненных отчетов").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя")),
         new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true))
     ].map(cmd => cmd.toJSON());
@@ -431,7 +426,7 @@ client.on(Events.MessageCreate, async (msg) => {
             });
         }
 
-        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
+        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
@@ -439,17 +434,19 @@ client.on(Events.MessageCreate, async (msg) => {
             const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => msg.member.roles.cache.has(role));
             if (!hasPermission) return;
 
-            const channelMessages = await msg.channel.messages.fetch({ limit: 50 });
-            const appMessage = channelMessages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
-            
+            const channelMessages = await msg.channel.messages.fetch({ limit: 50 }).catch(() => null);
             let candidateText = "Не удалось определить";
             let candidateId = "unknown";
-            if (appMessage) {
-                const description = appMessage.embeds[0].description || "";
-                const userMatch = description.match(/<@(\d+)>/);
-                if (userMatch) {
-                    candidateId = userMatch[1];
-                    candidateText = `<@${candidateId}>`;
+
+            if (channelMessages) {
+                const appMessage = channelMessages.find(m => m.embeds.length > 0 && m.embeds[0].title?.startsWith("Заявление"));
+                if (appMessage) {
+                    const description = appMessage.embeds[0].description || "";
+                    const userMatch = description.match(/<@(\d+)>/);
+                    if (userMatch) {
+                        candidateId = userMatch[1];
+                        candidateText = `<@${candidateId}>`;
+                    }
                 }
             }
 
@@ -549,8 +546,8 @@ client.on(Events.InteractionCreate, async (i) => {
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             
-            // Защита команд по ролям (кроме /rank)
-            if (i.commandName !== "rank") {
+            // Защита команд по ролям (Рекруты теперь могут проверять баланс и ранк!)
+            if (i.commandName !== "rank" && i.commandName !== "balance") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
                 if (!hasPermission) {
@@ -712,7 +709,7 @@ client.on(Events.InteractionCreate, async (i) => {
 ### 🍸 YOUNG ➔ 🟣 DARKNESS ###
 **Требования:**
 • 20 МП суммарно
-• Стабильный онлайн (больше 100 часов in игре)
+• Стабильный онлайн (больше 100 часов в игре)
 • Помощь семье
 • Хорошая коммуникация
 
@@ -818,9 +815,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // =====================================================
         // ОБРАБОТКА СИСТЕМЫ АФК СТАТУСОВ
-        // =====================================================
         if (i.isButton() && (i.customId === "afk_enter" || i.customId === "afk_leave")) {
             if (i.customId === "afk_enter") {
                 salary.afk[i.user.id] = new Date().toISOString();
@@ -837,9 +832,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // =====================================================
         // ВЫЗОВ МОДАЛКИ ОТЧЕТА ПОВЫШЕНИЯ
-        // =====================================================
         if (i.isButton() && i.customId === "open_report_modal") {
             const modal = new ModalBuilder()
                 .setCustomId("modal_report_submit")
@@ -989,8 +982,8 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (targetMember) {
                     await targetMember.send("❌ Ваше ручное повышение в планшете было отклонено старшим составом.").catch(() => null);
                 }
-                await i.message.delete().catch(() => null);
                 await i.reply({ content: "❌ Повышение отклонено.", ephemeral: true });
+                await i.message.delete().catch(() => null);
                 return;
             }
 
@@ -1004,8 +997,8 @@ client.on(Events.InteractionCreate, async (i) => {
                     await targetMember.send(`🎉 Поздравляем! Ваш ранг на сервере был успешно обновлен!`).catch(() => null);
                 }
 
-                await i.message.delete().catch(() => null);
                 await i.reply({ content: "✅ Роли игрока перевыданы, повышение зафиксировано!", ephemeral: true });
+                await i.message.delete().catch(() => null);
                 return;
             }
         }
@@ -1017,7 +1010,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId(`group_select_${faction}`)
-                    .setPlaceholder("Выберите тип мероприятие")
+                    .setPlaceholder("Выберите тип мероприятия")
             );
 
             if (faction === "ballas") {
@@ -1149,9 +1142,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // =====================================================
-        // ОБРАБОТКА ИНТЕРАКЦИЙ СИСТЕМЫ АУДИТА И ЗАЯВОК
-        // =====================================================
+        // ОБРАБОТКА СИСТЕМЫ АУДИТА И ЗАЯВОК
         if (i.isModalSubmit() && i.customId.startsWith("app_reject_modal_")) {
             const targetId = i.customId.replace("app_reject_modal_", "");
             const reason = i.fields.getTextInputValue("reject_reason_input");
@@ -1294,13 +1285,14 @@ ${data.q4}`;
             const targetId = i.customId.replace("call_voice_", "");
             const voiceChannelId = i.values[0];
 
-            const messages = await i.channel.messages.fetch({ limit: 20 });
-            const appMessage = messages.find(m => m.embeds.length > 0 && m.embeds[0].title.startsWith("Заявление"));
-
-            if (appMessage) {
-                const embed = EmbedBuilder.from(appMessage.embeds[0]);
-                embed.setColor("Orange").setTitle("Заявление (Вызов на обзвон)");
-                await appMessage.edit({ embeds: [embed] });
+            const messages = await i.channel.messages.fetch({ limit: 20 }).catch(() => null);
+            if (messages) {
+                const appMessage = messages.find(m => m.embeds.length > 0 && m.embeds[0].title?.startsWith("Заявление"));
+                if (appMessage) {
+                    const embed = EmbedBuilder.from(appMessage.embeds[0]);
+                    embed.setColor("Orange").setTitle("Заявление (Вызов на обзвон)");
+                    await appMessage.edit({ embeds: [embed] }).catch(() => null);
+                }
             }
 
             const voiceUrl = `https://discord.com/channels/${i.guild.id}/${voiceChannelId}`;
@@ -1325,7 +1317,6 @@ ${data.q4}`;
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
 
-            // Исключения для массовых сборов и АФК систем
             if (parts[0] === "group" && parts[1] === "start") return;
             if (i.customId === "open_report_modal" || i.customId === "afk_enter" || i.customId === "afk_leave") return;
             if (parts[0] === "report") return;
@@ -1360,8 +1351,8 @@ ${data.q4}`;
                 const candidateId = parts[3];
 
                 if (action === "reject") {
-                    await i.message.delete().catch(() => null);
                     await i.reply({ content: "❌ Отчёт планшета отклонён. Сообщение удалено.", ephemeral: true });
+                    await i.message.delete().catch(() => null);
                     return;
                 }
 
@@ -1375,13 +1366,12 @@ ${data.q4}`;
                     saveDB(salary);
                     await updateSalaryEmbed(i.guild);
 
-                    await i.message.delete().catch(() => null);
                     await i.reply({ content: "✅ Отчёт успешно подтвержден! Рекрутеру начислено $10,000.", ephemeral: true });
+                    await i.message.delete().catch(() => null);
                     return;
                 }
             }
 
-            // Базовая проверка прав для ВСЕХ кнопок (возвращено к чистому стандарту, т.к. роли теперь в ALLOWED_ROLES)
             const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
             if (!hasPermission) {
                 await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
@@ -1424,7 +1414,6 @@ ${data.q4}`;
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
                     await targetMember.roles.add(rolesToAdd).catch(() => null);
 
-                    // Архивация анкетных данных в глобальный реестр
                     const liveData = applications.get(targetId);
                     salary.archive[targetId] = {
                         acceptedBy: i.user.id,
