@@ -1381,7 +1381,17 @@ ${data.q4}`;
                 }
             }
 
-            const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+            // Базовая проверка прав для большинства кнопок
+            let hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+
+            // Расширяем права специально для кнопок управления тикетами (app_)
+            if (parts[0] === "app") {
+                const extraAppRoles = ["1468704257606684712", "1458484199735689299"];
+                if (extraAppRoles.some(role => member.roles.cache.has(role))) {
+                    hasPermission = true;
+                }
+            }
+
             if (!hasPermission) {
                 await i.reply({ content: "❌ У вас нет прав для нажатия этих кнопок.", ephemeral: true });
                 return;
