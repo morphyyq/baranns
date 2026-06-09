@@ -219,7 +219,7 @@ async function updateOnlineMonitor() {
             let totalMembersCount = 0;
 
             const mainEmbed = new EmbedBuilder()
-                .setTitle("📊 Мониторинг active состава семьи")
+                .setTitle("📊 Мониторинг активного состава семьи")
                 .setColor("#2b2d31")
                 .setTimestamp();
 
@@ -356,8 +356,7 @@ client.once(Events.ClientReady, async () => {
         new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить панель ручного управления АФК статусом"),
         new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную панель контроля состава"),
         new SlashCommandBuilder().setName("rank").setDescription("Посмотреть статистику выполненных отчетов").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя")),
-        new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true)),
-        new SlashCommandBuilder().setName("family_info").setDescription("Отправить широкое информационное эмбед-объявление семьи с призывом")
+        new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true))
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -573,88 +572,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            if (i.commandName === "family_info") {
-                await i.deferReply({ ephemeral: true });
-
-                const bannerFile = new AttachmentBuilder("./image_4e6d03.png", { name: "banner.png" });
-
-                const embed = new EmbedBuilder()
-                    .setTitle("✨ ИНФОРМАЦИЯ СЕМЬИ 𝗗 𝗔 𝗥 𝗞 𝗡 𝗘 𝗦 𝗦 ✨")
-                    .setDescription(
-                        "Мы — амбициозная и сплоченная крайм-семья, где каждый стоит друг за друга горой. " +
-                        "Если ты ищешь место для развития, стабильного заработка, интересного контента и сильного коллектива — " +
-                        "добро пожаловать в **Darkness**. Здесь нет токсичности, бессмысленных приказов и душных правил. " +
-                        "Только грамотный движ, взаимопомощь и удовольствие от игры. 🦇\n\n" +
-                        "⠀"
-                    )
-                    .setColor("#1a1a1a")
-                    .addFields(
-                        {
-                            name: "🍑 Что вы получаете, вступив в нашу семью?",
-                            value: 
-                                "🏰 • Элитный семейный дом и стильный семейный офис\n" +
-                                "🚘 • Топовый семейный автопарк под любые нужды\n" +
-                                "📦 • Полностью укомплектованный семейный склад\n" +
-                                "💼 • Роль **Darkness** и возможность попасть во фракцию\n" +
-                                "🤝 • Помощь на старте, поддержка 24/7 и сопровождение в развитии\n" +
-                                "💰 • Выплаты, помощь с лицензиями, одеждой и другими базовыми потребностями\n" +
-                                "🎉 • Постоянный контент: тулево, фарм, мероприятия и совместные активности\n" +
-                                "🫂 • Дружный коллектив, где всегда можно обратиться за советом к руководству или старшему составу\n" +
-                                "⠀",
-                            inline: false
-                        },
-                        {
-                            name: "🍏 Направления внутри семьи",
-                            value: 
-                                "🔫 • **Капт-состав** — для любителей перестрелок и доминирования на тулеве\n" +
-                                "🎭 • **РП-состав** — для игроков, ценящих атмосферу и качественные отыгровки\n" +
-                                "💰 • **Фарм-состав** — для тех, кто хочет стабильно зарабатывать в хорошей компании\n" +
-                                "📋 • **Рекрут-состав** — для общительных игроков, готовых развивать семью и получать процент за новых участников\n" +
-                                "⠀",
-                            inline: false
-                        },
-                        {
-                            name: "🍎 Что мы ждем от тебя?",
-                            value: 
-                                "🏷️ • Смена фамилии на **Darkness**\n" +
-                                "🧠 • Адекватность и понимание игровых правил\n" +
-                                "🤝 • Уважение к каждому члену семьи\n" +
-                                "🔞 • Возраст **13+** (возможны исключения)\n" +
-                                "🎙️ • Наличие микрофона и обратной связи\n" +
-                                "⠀",
-                            inline: false
-                        },
-                        {
-                            name: "❓ Часто задаваемые вопросы",
-                            value: 
-                                "**— Можно ли ставить фамилию Darkness в игре?**\n" +
-                                "*О: Да, после вступления в нашу семью.*\n\n" +
-                                "**— Попав в фаму, можно ли попасть в основной состав?**\n" +
-                                "*О: Да, если вы будете активить и двигаться с нами, то со временем перейдете в основу.*\n\n" +
-                                "**— За что можно получить исключение из семьи?**\n" +
-                                "*О: Использование запрещенного ПО, серьезные нарушения правил, не приходы на мероприятия, токсичное поведение и действия против интересов семьи.*\n\n" +
-                                "**— Я новичок и у меня нет денег на лицензии или одежду. Что делать?**\n" +
-                                "*О: Мы поможем освоиться, выдадим стартовую поддержку и подскажем, как быстро встать на ноги.*\n\n" +
-                                "**— Есть ли помощь для новых игроков?**\n" +
-                                "*О: Да. Руководство и старшие участники всегда готовы помочь разобраться в механиках сервера и ответить на любые вопросы.*\n" +
-                                "⠀",
-                            inline: false
-                        }
-                    )
-                    .setImage("attachment://banner.png")
-                    .setFooter({ text: "⚡ Darkness ждёт именно тебя. Стань частью семьи и развивайся вместе с нами!" })
-                    .setTimestamp();
-
-                await i.channel.send({
-                    content: "@everyone",
-                    embeds: [embed],
-                    files: [bannerFile]
-                });
-
-                await i.editReply({ content: "✅ Широкое информационное объявление успешно отправлено!" });
-                return;
-            }
-
             if (i.commandName === "rank") {
                 const targetUser = i.options.getUser("user") || i.user;
                 const totalReports = salary.reports[targetUser.id] || 0;
@@ -840,8 +757,21 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "composition_panel") {
-                await updateOnlineMonitor();
-                await i.reply({ content: "✅ Панель состава обновлена и вызвана.", ephemeral: true });
+                const embed = new EmbedBuilder()
+                    .setTitle("👥 Панель управления составом")
+                    .setDescription("Используйте интерактивную кнопку ниже для принудительного обновления актуальной статистики онлайна (мониторинга) выбранных ролей в закрепленном канале.")
+                    .setColor("#2b2d31");
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("update_composition_monitor")
+                        .setLabel("Обновить онлайн")
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji("🔄")
+                );
+
+                await i.reply({ content: "✅ Панель управления составом вызвана.", ephemeral: true });
+                await i.channel.send({ embeds: [embed], components: [row] });
                 return;
             }
 
@@ -949,7 +879,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТИКЕТА ОТЧЕТА
+        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТТИКЕТА ОТЧЕТА
         if (i.isModalSubmit() && i.customId === "modal_report_submit") {
             const staticIdStr = i.fields.getTextInputValue("report_static_id");
             const proofLink = i.fields.getTextInputValue("report_proof_link");
@@ -1098,7 +1028,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId(`group_select_${faction}`)
-                    .setPlaceholder("Выберите тип мероприятие")
+                    .setPlaceholder("Выберите тип мероприятия")
             );
 
             if (faction === "ballas") {
@@ -1242,7 +1172,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
             if (logChannel) {
                 const rejectEmbed = new EmbedBuilder()
-                    .setTitle("❌ Отказ по заявке в семью")
+                    .setTitle("❌ Отказ по заявке в тему")
                     .setDescription(`👤 **Кандидат:** <@${targetId}> (\`${targetId}\`)\n🔒 **Модератор:** <@${i.user.id}>\n📝 **Причина отказа:** ${reason}`)
                     .setColor("Red")
                     .setTimestamp();
@@ -1391,7 +1321,7 @@ ${data.q4}`;
             const targetMember = await i.guild.members.fetch(targetId).catch(() => null);
             if (targetMember) {
                 await targetMember.send({
-                    content: `🔔 **Привет!** Твоя заявка в семью **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовой канале по прямой ссылке:\n${voiceUrl}`
+                    content: `🔔 **Привет!** Твоя заявка в тему **Darkness** на сервере **${i.guild.name}** была проверена.\n\nТебя вызвали на обзвон! Пожалуйста, подключись к голосовой канале по прямой ссылке:\n${voiceUrl}`
                 }).catch(() => {
                     i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
                 });
@@ -1411,6 +1341,22 @@ ${data.q4}`;
             if (i.customId === "open_report_modal" || i.customId === "afk_enter" || i.customId === "afk_leave") return;
             if (parts[0] === "report") return;
             if (parts[0] === "p") return;
+
+            // =====================================================
+            // ОБРАБОТКА КНОПКИ РУЧНОГО ОБНОВЛЕНИЯ МОНИТОРИНГА СОСТАВА
+            // =====================================================
+            if (i.customId === "update_composition_monitor") {
+                const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => member.roles.cache.has(role));
+                if (!hasPermission) {
+                    return i.reply({ content: "❌ У вас нет прав для принудительного обновления мониторинга состава.", ephemeral: true });
+                }
+
+                // Откладываем ответ, так как updateOnlineMonitor() выполняет fetch участников и может занять время
+                await i.deferReply({ ephemeral: true });
+                await updateOnlineMonitor();
+                await i.editReply({ content: "✅ Мониторинг активного состава успешно обновлен вручную!" });
+                return;
+            }
 
             // ОБРАБОТКА КНОПОК ПОДТВЕРЖДЕНИЯ В КАНАЛЕ АУДИТА
             if (parts[0] === "audit") {
