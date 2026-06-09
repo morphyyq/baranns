@@ -74,7 +74,7 @@ const SERVERS = {
             AUDIT: "1500501911848095906",
             SALARY: "1500515048970522685",
             PANEL: "1458410655697731730",
-            CATEGORY: "1513659194832719962", 
+            CATEGORY: "1513659194832719962", // Перенаправлено в новую категорию по запросу
             AUDIT_APP: "1464575195418460417",
             MONITOR: "1507787906700415076", 
             SBOR: "1458481307351781709",
@@ -96,6 +96,7 @@ const SERVERS = {
             "1475114013611528274"
         ],
         MONITOR_ROLES: [
+            // Объединенный РП-Состав из 4 ролей вместо старого отображения
             { id: ["1513647909965533377", "1458485405769797848", "1458485351424331903", "1458485277495656553"], name: "РП Состав" },
             { id: "1475114013611528274", name: "Каптеры" },
             { id: "1468704257606684712", name: "Рекруты" }
@@ -198,7 +199,7 @@ async function updateSalaryEmbed(guild) {
 
 
 // =====================================================
-// MONITORING SYSTEM
+// MONITORING SYSTEM (С поддержкой массивов ролей)
 // =====================================================
 async function updateOnlineMonitor() {
     try {
@@ -218,7 +219,7 @@ async function updateOnlineMonitor() {
             let totalMembersCount = 0;
 
             const mainEmbed = new EmbedBuilder()
-                .setTitle("📊 Мониторинг активного состава семьи")
+                .setTitle("📊 Мониторинг active состава семьи")
                 .setColor("#2b2d31")
                 .setTimestamp();
 
@@ -230,6 +231,7 @@ async function updateOnlineMonitor() {
                         const r = guild.roles.cache.get(id);
                         if (r) matchedMembers.push(...Array.from(r.members.values()));
                     });
+                    // Убираем дубликаты
                     matchedMembers = [...new Set(matchedMembers)];
                 } else {
                     const role = guild.roles.cache.get(roleData.id);
@@ -326,6 +328,7 @@ async function updateAFKEmbed(guild) {
 // SYNC CROSS-SERVER JOIN ROLES
 // =====================================================
 client.on(Events.GuildMemberAdd, async (member) => {
+    // Если зашел на сервер Ballas (1504470399268819115)
     if (member.guild.id === "1504470399268819115") {
         const darknessGuild = await client.guilds.fetch("1458190222042075251").catch(() => null);
         if (darknessGuild) {
@@ -352,9 +355,9 @@ client.once(Events.ClientReady, async () => {
         new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую панель системы повышений"),
         new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить панель ручного управления АФК статусом"),
         new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную панель контроля состава"),
-        new SlashCommandBuilder().setName("recruit_embed").setDescription("Отправить эмбед-объявление о наборе в канал семьи"),
         new SlashCommandBuilder().setName("rank").setDescription("Посмотреть статистику выполненных отчетов").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя")),
-        new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true))
+        new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true)),
+        new SlashCommandBuilder().setName("family_info").setDescription("Отправить широкое информационное эмбед-объявление семьи с призывом")
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -427,6 +430,7 @@ client.on(Events.MessageCreate, async (msg) => {
             });
         }
 
+        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
@@ -484,6 +488,7 @@ client.on(Events.MessageCreate, async (msg) => {
             return;
         }
 
+        // SCREEN SYSTEM (Для обычных отчетов рекрутов)
         if (config.CHANNELS && msg.channel.id === config.CHANNELS.SCREEN) {
             if (processed.has(msg.id)) return;
             processed.add(msg.id);
@@ -543,6 +548,7 @@ client.on(Events.InteractionCreate, async (i) => {
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             
+            // Защита команд по ролям (кроме /rank)
             if (i.commandName !== "rank") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
@@ -567,83 +573,85 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            // КЛЮЧЕВАЯ КОМАНДА: RECRUIT_EMBED
-            if (i.commandName === "recruit_embed") {
-                const TARGET_CHANNEL_ID = "1513843703783882812";
-                const channel = await i.guild.channels.fetch(TARGET_CHANNEL_ID).catch(() => null);
+            if (i.commandName === "family_info") {
+                await i.deferReply({ ephemeral: true });
 
-                if (!channel) {
-                    await i.reply({ content: "❌ Ошибка: целевой канал для публикации набора не найден.", ephemeral: true });
-                    return;
-                }
-
-                const imagePath = path.join(__dirname, "image_4ecda9.png");
-                const hasImage = fs.existsSync(imagePath);
-                const files = [];
+                const bannerFile = new AttachmentBuilder("./image_4e6d03.png", { name: "banner.png" });
 
                 const embed = new EmbedBuilder()
-                    .setTitle("✨ ОТКРЫТ АКТИВНЫЙ НАБОР В СЕМЬЮ 𝗗 𝗔 𝗥 𝗞 𝗡 𝗘 𝗦 𝗦 ✨")
+                    .setTitle("✨ ИНФОРМАЦИЯ СЕМЬИ 𝗗 𝗔 𝗥 𝗞 𝗡 𝗘 𝗦 𝗦 ✨")
                     .setDescription(
                         "Мы — амбициозная и сплоченная крайм-семья, где каждый стоит друг за друга горой. " +
-                        "Если ты ищешь место для развития, стабильного заработка, интересного контента и сильного коллектива — добро пожаловать в Darkness. " +
-                        "Здесь нет токсичности, бессмысленных приказов и душных правил. Только грамотный движ, взаимопомощь и удовольствие от игры. 🦇"
+                        "Если ты ищешь место для развития, стабильного заработка, интересного контента и сильного коллектива — " +
+                        "добро пожаловать в **Darkness**. Здесь нет токсичности, бессмысленных приказов и душных правил. " +
+                        "Только грамотный движ, взаимопомощь и удовольствие от игры. 🦇\n\n" +
+                        "⠀"
                     )
                     .setColor("#1a1a1a")
                     .addFields(
                         {
                             name: "🍑 Что вы получаете, вступив в нашу семью?",
                             value: 
-                                "🏰 Элитный семейный дом и стильный семейный офис\n" +
-                                "🚘 Топовый семейный автопарк под любые нужды\n" +
-                                "📦 Полностью укомплектованный семейный склад\n" +
-                                "💼 Роль Darkness и возможность попасть во фракцию\n" +
-                                "🤝 Помощь на старте, поддержка 24/7 и сопровождение в развитии\n" +
-                                "💰 Выплаты, помощь с лицензиями, одеждой и другими базовыми потребностями\n" +
-                                "🎉 Постоянный контент: тулево, фарм, мероприятия и совместные активности\n" +
-                                "🫂 Дружный коллектив, где всегда можно обратиться за советом к руководству или старшему составу"
+                                "🏰 • Элитный семейный дом и стильный семейный офис\n" +
+                                "🚘 • Топовый семейный автопарк под любые нужды\n" +
+                                "📦 • Полностью укомплектованный семейный склад\n" +
+                                "💼 • Роль **Darkness** и возможность попасть во фракцию\n" +
+                                "🤝 • Помощь на старте, поддержка 24/7 и сопровождение в развитии\n" +
+                                "💰 • Выплаты, помощь с лицензиями, одеждой и другими базовыми потребностями\n" +
+                                "🎉 • Постоянный контент: тулево, фарм, мероприятия и совместные активности\n" +
+                                "🫂 • Дружный коллектив, где всегда можно обратиться за советом к руководству или старшему составу\n" +
+                                "⠀",
+                            inline: false
                         },
                         {
                             name: "🍏 Направления внутри семьи",
                             value: 
-                                "🔫 **Капт-состав** — для любителей перестрелок и доминирования на тулеве\n" +
-                                "🎭 **РП-состав** — для игроков, ценящих atmosphere и качественные отыгровки\n" +
-                                "💰 **Фарм-состав** — для тех, кто хочет стабильно зарабатывать в хорошей компании\n" +
-                                "📋 **Рекрут-состав** — для общительных игроков, готовых развивать семью и получать процент за новых участников"
+                                "🔫 • **Капт-состав** — для любителей перестрелок и доминирования на тулеве\n" +
+                                "🎭 • **РП-состав** — для игроков, ценящих атмосферу и качественные отыгровки\n" +
+                                "💰 • **Фарм-состав** — для тех, кто хочет стабильно зарабатывать в хорошей компании\n" +
+                                "📋 • **Рекрут-состав** — для общительных игроков, готовых развивать семью и получать процент за новых участников\n" +
+                                "⠀",
+                            inline: false
                         },
                         {
                             name: "🍎 Что мы ждем от тебя?",
                             value: 
-                                "🏷️ Смена фамилии на Darkness\n" +
-                                "🧠 Адекватность и понимание игровых правил\n" +
-                                "🤝 Уважение к каждому члену семьи\n" +
-                                "🔞 Возраст 13+ (возможны исключения)\n" +
-                                "🎙️ Наличие микрофона и обратной связи"
+                                "🏷️ • Смена фамилии на **Darkness**\n" +
+                                "🧠 • Адекватность и понимание игровых правил\n" +
+                                "🤝 • Уважение к каждому члену семьи\n" +
+                                "🔞 • Возраст **13+** (возможны исключения)\n" +
+                                "🎙️ • Наличие микрофона и обратной связи\n" +
+                                "⠀",
+                            inline: false
                         },
                         {
                             name: "❓ Часто задаваемые вопросы",
                             value: 
-                                "**— Можно ли ставить фамилию Darkness в игре?**\nДа, после вступления в нашу семью.\n\n" +
-                                "**— Попав в фаму, можно ли попасть в основной состав?**\nДа, если вы будете активить и двигаться с нами, то со временем перейдете в основу.\n\n" +
-                                "**— За что можно получить исключение из семьи?**\nИспользование запрещенного ПО, серьезные нарушения правил, не приходы на мероприятия, токсичное поведение и действия против интересов семьи.\n\n" +
-                                "**— Я новичок и у меня нет денег на лицензии или одежду. Что делать?**\nМы поможем освоиться, выдадим стартовую поддержку и подскажем, как быстро встать на ноги.\n\n" +
-                                "**— Есть ли помощь для новых игроков?**\nДа. Руководство и старшие участники всегда готовы помочь разобраться в механиках сервера и ответить на любые вопросы."
+                                "**— Можно ли ставить фамилию Darkness в игре?**\n" +
+                                "*О: Да, после вступления в нашу семью.*\n\n" +
+                                "**— Попав в фаму, можно ли попасть в основной состав?**\n" +
+                                "*О: Да, если вы будете активить и двигаться с нами, то со временем перейдете в основу.*\n\n" +
+                                "**— За что можно получить исключение из семьи?**\n" +
+                                "*О: Использование запрещенного ПО, серьезные нарушения правил, не приходы на мероприятия, токсичное поведение и действия против интересов семьи.*\n\n" +
+                                "**— Я новичок и у меня нет денег на лицензии или одежду. Что делать?**\n" +
+                                "*О: Мы поможем освоиться, выдадим стартовую поддержку и подскажем, как быстро встать на ноги.*\n\n" +
+                                "**— Есть ли помощь для новых игроков?**\n" +
+                                "*О: Да. Руководство и старшие участники всегда готовы помочь разобраться в механиках сервера и ответить на любые вопросы.*\n" +
+                                "⠀",
+                            inline: false
                         }
                     )
-                    .setFooter({ text: "⚡ Darkness ждёт именно тебя. Стань частью семьи и развивайся вместе с нами! Как это сделать в канале <#1513843703783882812>." });
+                    .setImage("attachment://banner.png")
+                    .setFooter({ text: "⚡ Darkness ждёт именно тебя. Стань частью семьи и развивайся вместе с нами!" })
+                    .setTimestamp();
 
-                if (hasImage) {
-                    const attachment = new AttachmentBuilder(imagePath, { name: "banner.png" });
-                    files.push(attachment);
-                    embed.setImage("attachment://banner.png");
-                }
-
-                await channel.send({
+                await i.channel.send({
                     content: "@everyone",
                     embeds: [embed],
-                    files: files
+                    files: [bannerFile]
                 });
 
-                await i.reply({ content: `✅ Объявление о наборе успешно опубликовано в канал <#${TARGET_CHANNEL_ID}>!`, ephemeral: true });
+                await i.editReply({ content: "✅ Широкое информационное объявление успешно отправлено!" });
                 return;
             }
 
@@ -785,7 +793,7 @@ client.on(Events.InteractionCreate, async (i) => {
 ### 🍸 YOUNG ➔ 🟣 DARKNESS ###
 **Требования:**
 • 20 МП суммарно
-• Стабильный онлайн (больше 100 часов in game)
+• Стабильный онлайн (больше 100 часов в игре)
 • Помощь семье
 • Хорошая коммуникация
 
@@ -891,7 +899,9 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
+        // =====================================================
         // ОБРАБОТКА СИСТЕМЫ АФК СТАТУСОВ
+        // =====================================================
         if (i.isButton() && (i.customId === "afk_enter" || i.customId === "afk_leave")) {
             if (i.customId === "afk_enter") {
                 salary.afk[i.user.id] = new Date().toISOString();
@@ -908,7 +918,9 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
+        // =====================================================
         // ВЫЗОВ МОДАЛКИ ОТЧЕТА ПОВЫШЕНИЯ
+        // =====================================================
         if (i.isButton() && i.customId === "open_report_modal") {
             const modal = new ModalBuilder()
                 .setCustomId("modal_report_submit")
@@ -937,7 +949,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТТИКЕТА ОТЧЕТА
+        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТИКЕТА ОТЧЕТА
         if (i.isModalSubmit() && i.customId === "modal_report_submit") {
             const staticIdStr = i.fields.getTextInputValue("report_static_id");
             const proofLink = i.fields.getTextInputValue("report_proof_link");
@@ -1086,7 +1098,7 @@ client.on(Events.InteractionCreate, async (i) => {
             const menu = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId(`group_select_${faction}`)
-                    .setPlaceholder("Выберите тип мероприятия")
+                    .setPlaceholder("Выберите тип мероприятие")
             );
 
             if (faction === "ballas") {
@@ -1244,6 +1256,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
         if (!config) return;
 
+        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ ЗАЯВКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -1271,6 +1284,7 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
+        // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
             if (modalLocks.has(i.user.id)) return;
             modalLocks.add(i.user.id);
@@ -1356,6 +1370,7 @@ ${data.q4}`;
             return;
         }
 
+        // ОБРАБОТКА ВЫБОРА ВОЙСА
         if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
             const targetId = i.customId.replace("call_voice_", "");
             const voiceChannelId = i.values[0];
@@ -1386,15 +1401,18 @@ ${data.q4}`;
             return;
         }
 
+        // ОБРАБОТКА КНОПОК
         if (i.isButton()) {
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
 
+            // Исключения для массовых сборов и АФК систем
             if (parts[0] === "group" && parts[1] === "start") return;
             if (i.customId === "open_report_modal" || i.customId === "afk_enter" || i.customId === "afk_leave") return;
             if (parts[0] === "report") return;
             if (parts[0] === "p") return;
 
+            // ОБРАБОТКА КНОПОК ПОДТВЕРЖДЕНИЯ В КАНАЛЕ АУДИТА
             if (parts[0] === "audit") {
                 const action = parts[1];
 
@@ -1450,6 +1468,7 @@ ${data.q4}`;
                 return;
             }
 
+            // Старые кнопки обычных отчетов скриншотов
             if (parts[0] === "accept" || parts[0] === "reject") {
                 const action = parts[0];
                 const targetId = parts[1];
@@ -1468,6 +1487,7 @@ ${data.q4}`;
                 return;
             }
 
+            // Кнопки управления тикетом (app)
             if (parts[0] === "app") {
                 const action = parts[1];
                 const targetId = parts[2];
@@ -1484,6 +1504,7 @@ ${data.q4}`;
                     const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : config.CAPTURE_ROLES;
                     await targetMember.roles.add(rolesToAdd).catch(() => null);
 
+                    // Архивация анкетных данных в глобальный реестр
                     const liveData = applications.get(targetId);
                     salary.archive[targetId] = {
                         acceptedBy: i.user.id,
