@@ -547,7 +547,7 @@ client.on(Events.InteractionCreate, async (i) => {
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             
-            // Защита команд по ролям (Рекруты теперь могут проверять баланс и ранк!)
+            // Защита команд по ролям
             if (i.commandName !== "rank" && i.commandName !== "balance") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
@@ -1148,16 +1148,41 @@ client.on(Events.InteractionCreate, async (i) => {
             const targetId = i.customId.replace("app_reject_modal_", "");
             const reason = i.fields.getTextInputValue("reject_reason_input");
 
-            const logChannelId = "1464576279771873353";
+            // ИСПОЛЬЗУЕМ КАНАЛ AUDIT_APP
+            const logChannelId = config.CHANNELS.AUDIT_APP || "1464575195418460417";
             const logChannel = await i.guild.channels.fetch(logChannelId).catch(() => null);
 
             if (logChannel) {
-                const rejectEmbed = new EmbedBuilder()
-                    .setTitle("❌ Отказ по заявке в тему")
-                    .setDescription(`👤 **Кандидат:** <@${targetId}> (\`${targetId}\`)\n🔒 **Модератор:** <@${i.user.id}>\n📝 **Причина отказа:** ${reason}`)
-                    .setColor("Red")
-                    .setTimestamp();
-                await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
+                // Пытаемся получить оригинальный Embed заявки из тикета, чтобы оформить лог как в image_db211c.png
+                let originalEmbed;
+                const messages = await i.channel.messages.fetch({ limit: 50 }).catch(() => null);
+                if (messages) {
+                    const msg = messages.find(m => m.embeds.length > 0 && m.embeds[0].description?.includes("ВАШ СТАТИЧЕСКИЙ ID"));
+                    if (msg) originalEmbed = msg.embeds[0];
+                }
+
+                if (originalEmbed) {
+                    const rejectEmbed = EmbedBuilder.from(originalEmbed)
+                        .setTitle(null)
+                        .setColor("Red")
+                        .setTimestamp();
+                    
+                    rejectEmbed.addFields(
+                        { name: "Кого", value: `<@${targetId}>`, inline: true },
+                        { name: "Отклонил", value: `<@${i.user.id}>`, inline: true },
+                        { name: "Причина", value: reason, inline: true }
+                    );
+                    
+                    await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
+                } else {
+                    // Резервный вариант, если Embed по каким-то причинам не найден
+                    const rejectEmbed = new EmbedBuilder()
+                        .setTitle("❌ Отказ по заявке в тему")
+                        .setDescription(`👤 **Кандидат:** <@${targetId}>\n🔒 **Отклонил:** <@${i.user.id}>\n📝 **Причина:** ${reason}`)
+                        .setColor("Red")
+                        .setTimestamp();
+                    await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
+                }
             }
 
             await i.reply({ content: `❌ Заявка успешно отклонена. Причина зафиксирована в канале логирования.` }).catch(() => null);
@@ -1435,6 +1460,24 @@ ${data.q4}`;
                     embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
                     await i.update({ embeds: [embed], components: [] });
 
+                    // --- ИНТЕГРАЦИЯ С AUDIT_APP ---
+                    const auditChannelId = config.CHANNELS.AUDIT_APP;
+                    if (auditChannelId) {
+                        const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
+                        if (auditChannel) {
+                            const auditEmbed = EmbedBuilder.from(i.message.embeds[0])
+                                .setTitle(null)
+                                .setColor("Green")
+                                .addFields(
+                                    { name: "Кого", value: `<@${targetId}>`, inline: true },
+                                    { name: "Принял", value: `<@${i.user.id}>`, inline: true }
+                                )
+                                .setTimestamp();
+                            await auditChannel.send({ embeds: [auditEmbed] }).catch(() => null);
+                        }
+                    }
+                    // ------------------------------
+
                     await i.channel.send({
                         content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **отправьте сюда скриншот с планшета**, чтобы зафиксировать отчет в аудите.`
                     });
@@ -1444,6 +1487,25 @@ ${data.q4}`;
                 if (action === "review") {
                     embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
                     await i.update({ embeds: [embed] });
+
+                    // --- ИНТЕГРАЦИЯ С AUDIT_APP ---
+                    const auditChannelId = config.CHANNELS.AUDIT_APP;
+                    if (auditChannelId) {
+                        const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
+                        if (auditChannel) {
+                            const auditEmbed = EmbedBuilder.from(i.message.embeds[0])
+                                .setTitle(null)
+                                .setColor("Yellow")
+                                .addFields(
+                                    { name: "Кого", value: `<@${targetId}>`, inline: true },
+                                    { name: "Взял на рассмотрение", value: `<@${i.user.id}>`, inline: true }
+                                )
+                                .setTimestamp();
+                            await auditChannel.send({ embeds: [auditEmbed] }).catch(() => null);
+                        }
+                    }
+                    // ------------------------------
+
                     await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
                     return;
                 }
