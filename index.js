@@ -130,9 +130,10 @@ function loadDB() {
         if (!data.reports) data.reports = {};
         if (!data.afk) data.afk = {};
         if (!data.archive) data.archive = {};
+        if (!data.activity) data.activity = {}; // Добавлено поле для активности
         return data;
     } catch {
-        return { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {} };
+        return { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {}, activity: {} };
     }
 }
 
@@ -219,7 +220,7 @@ async function updateOnlineMonitor() {
             let totalMembersCount = 0;
 
             const mainEmbed = new EmbedBuilder()
-                .setTitle("📊 Мониторинг активного состава семьи")
+                .setTitle("📊 Мониторинг active состава семьи")
                 .setColor("#2b2d31")
                 .setTimestamp();
 
@@ -324,6 +325,53 @@ async function updateAFKEmbed(guild) {
 
 
 // =====================================================
+// AUTOMATIC INACTIVITY CHECKER (20 DAYS)
+// =====================================================
+async function checkInactivity() {
+    console.log("[INACTIVITY CHECK] Запуск сканирования неактивных пользователей...");
+    const mainGuildId = "1458190222042075251";
+    const guild = await client.guilds.fetch(mainGuildId).catch(() => null);
+    if (!guild) return;
+
+    const inactiveRoleId = "1458410670071615580";
+    const twentyDaysMs = 20 * 24 * 60 * 60 * 1000; // 20 дней в мс
+    const now = Date.now();
+
+    try {
+        const members = await guild.members.fetch();
+        if (!salary.activity) salary.activity = {};
+
+        for (const [memberId, member] of members) {
+            if (member.user.bot) continue;
+            if (member.roles.cache.has(inactiveRoleId)) continue;
+
+            const lastActive = salary.activity[memberId];
+            
+            // Если бот ещё не видел сообщений от юзера, за точку отсчета берется дата его захода на сервер
+            const baseline = lastActive || member.joinedTimestamp;
+
+            if (now - baseline > twentyDaysMs) {
+                // Фильтруем системные роли и @everyone, которые нельзя забирать
+                const rolesToRemove = member.roles.cache.filter(role => role.id !== guild.id && !role.managed);
+                
+                try {
+                    if (rolesToRemove.size > 0) {
+                        await member.roles.remove(rolesToRemove);
+                    }
+                    await member.roles.add(inactiveRoleId);
+                    console.log(`[INACTIVITY] Очищены роли у ${member.user.tag} (${memberId}) за неактив 20 дней. Выдана роль неактива.`);
+                } catch (roleError) {
+                    console.error(`Не удалось обновить роли для ${member.user.tag}:`, roleError.message);
+                }
+            }
+        }
+    } catch (err) {
+        console.error("[INACTIVITY CHECK ERROR]", err);
+    }
+}
+
+
+// =====================================================
 // SYNC CROSS-SERVER JOIN ROLES
 // =====================================================
 client.on(Events.GuildMemberAdd, async (member) => {
@@ -376,6 +424,10 @@ client.once(Events.ClientReady, async () => {
     if (mainGuild) {
         await updateOnlineMonitor();
         await updateAFKEmbed(mainGuild);
+        
+        // Первая проверка неактивности через 10 секунд после старта, далее каждые 12 часов
+        setTimeout(checkInactivity, 10000);
+        setInterval(checkInactivity, 12 * 60 * 60 * 1000);
     }
     setInterval(updateOnlineMonitor, 60000);
 });
@@ -416,6 +468,11 @@ client.on(Events.GuildMemberRemove, async (member) => {
 client.on(Events.MessageCreate, async (msg) => {
     try {
         if (!msg.guild || msg.author.bot) return;
+
+        // Запись времени последнего сообщения пользователя для отслеживания неактива
+        if (!salary.activity) salary.activity = {};
+        salary.activity[msg.author.id] = Date.now();
+        saveDB(salary);
 
         const config = SERVERS[msg.guild.id];
         if (!config) return;
@@ -1143,24 +1200,34 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОБРАБОТКА СИСТЕМЫ АУДИТА И ЗАЯВОК
+        // ОБРАБОТКА СИСТЕМЫ АУДИТА И ЗАЯВОК (ОТКАЗЫ С ЛОГАМИ В КАДРОВЫЙ АУДИТ)
         if (i.isModalSubmit() && i.customId.startsWith("app_reject_modal_")) {
             const targetId = i.customId.replace("app_reject_modal_", "");
             const reason = i.fields.getTextInputValue("reject_reason_input");
 
-            const logChannelId = "1464576279771873353";
+            // Отправка строго в канал кадрового аудита (1464575195418460417)
+            const logChannelId = "1464575195418460417";
             const logChannel = await i.guild.channels.fetch(logChannelId).catch(() => null);
 
             if (logChannel) {
-                const rejectEmbed = new EmbedBuilder()
-                    .setTitle("❌ Отказ по заявке в тему")
-                    .setDescription(`👤 **Кандидат:** <@${targetId}> (\`${targetId}\`)\n🔒 **Модератор:** <@${i.user.id}>\n📝 **Причина отказа:** ${reason}`)
-                    .setColor("Red")
-                    .setTimestamp();
-                await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
+                const auditEmbed = new EmbedBuilder()
+                    .setTitle("📋 Кадровый Аудит | Заявки в семью")
+                    .setColor(0xFF0000) // Насыщенный красный цвет
+                    .setDescription(`Было принято решение по заявке пользователя <@${targetId}>.`)
+                    .addFields(
+                        { name: "👤 Кандидат", value: `<@${targetId}> \`(${targetId})\``, inline: true },
+                        { name: "🛠 Модератор", value: `<@${i.user.id}>`, inline: true },
+                        { name: "📊 Статус", value: "❌ **Отклонено**", inline: false },
+                        { name: "📝 Причина отказа", value: `\`\`\`${reason}\`\`\``, inline: false }
+                    )
+                    .setThumbnail(i.guild.iconURL({ dynamic: true }) || null)
+                    .setTimestamp()
+                    .setFooter({ text: `ID Модератора: ${i.user.id}` });
+
+                await logChannel.send({ embeds: [auditEmbed] }).catch(() => null);
             }
 
-            await i.reply({ content: `❌ Заявка успешно отклонена. Причина зафиксирована в канале логирования.` }).catch(() => null);
+            await i.reply({ content: `❌ Заявка успешно отклонена. Лог кадрового аудита отправлен.` }).catch(() => null);
             setTimeout(() => i.channel.delete().catch(() => null), 2000);
             return;
         }
