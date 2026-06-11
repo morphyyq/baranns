@@ -32,8 +32,11 @@ const {
 
 
 // =====================================================
-// TELEGRAM SYSTEM FUNCTIONS
+// UTILS & TELEGRAM SYSTEM FUNCTIONS
 // =====================================================
+
+// Функция для создания искусственной паузы (защита от спам-фильтра Discord)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Функция отправки сообщений в Telegram
 function sendTelegramMessage(chatId, text) {
@@ -356,7 +359,7 @@ async function updateAFKEmbed(guild) {
 
 
 // =====================================================
-// TELEGRAM LONG POLLING BOT UPDATER
+// TELEGRAM LONG POLLING BOT UPDATER (С ПРОВЕРКОЙ КОДА)
 // =====================================================
 let tgOffset = 0;
 function checkTelegramUpdates() {
@@ -376,7 +379,7 @@ function checkTelegramUpdates() {
                             const text = update.message.text.trim();
                             const chatId = update.message.chat.id;
                             
-                            // Проверяем, ввёл ли человек валидный секретный пин-код из ДС
+                            // 1. Код введен успешно и найден в базе данных
                             if (salary.tg_codes && salary.tg_codes[text]) {
                                 const discordId = salary.tg_codes[text];
                                 
@@ -385,14 +388,20 @@ function checkTelegramUpdates() {
                                 saveDB(salary);
                                 
                                 sendTelegramMessage(chatId, "✅ **Успешно!** Ваш Telegram аккаунт привязан к вашему Discord. Теперь уведомления о сборах семьи **Darkness** будут приходить прямо сюда в ЛС!");
-                            } else if (text === "/start") {
+                            } 
+                            // 2. Пользователь только запустил бота
+                            else if (text === "/start") {
                                 sendTelegramMessage(chatId, "👋 Привет! Используйте команду `/link` в Discord, получите шестизначный код и отправьте его сюда, чтобы связать аккаунты.");
+                            } 
+                            // 3. Код введен НЕВЕРНО (Ошибка валидации)
+                            else {
+                                sendTelegramMessage(chatId, "❌ **Ошибка!** Введенный код неверный, устарел или уже был использован.\n\nПожалуйста, введите команду `/link` в Discord заново, чтобы получить свежий рабочий код.");
                             }
                         }
                     }
                 }
             } catch (e) {}
-            setTimeout(checkTelegramUpdates, 1000); // Повторяем запрос
+            setTimeout(checkTelegramUpdates, 1000); // Повторяем запрос Long Polling
         });
     }).on('error', () => {
         setTimeout(checkTelegramUpdates, 5000);
@@ -638,21 +647,20 @@ client.on(Events.InteractionCreate, async (i) => {
                 }
             }
 
-            // Обработка новой команды /link
+            // Обработка команды /link (Юзернейм изменен на Darknerez_bot)
             if (i.commandName === "link") {
                 const pinCode = Math.floor(100000 + Math.random() * 900000).toString();
                 
                 salary.tg_codes[pinCode] = i.user.id;
                 saveDB(salary);
 
-                // Обязательно впишите юзернейм своего бота сюда без символа @
-                const botUsername = "ИМЯ_ВАШЕГО_БОТА_BOT"; 
+                const botUsername = "Darknerez_bot"; 
 
                 const embedLink = new EmbedBuilder()
                     .setTitle("🔗 Получение сборов в Telegram")
                     .setDescription(
                         `Чтобы бот мог оповещать вас о сборах семьи прямо в ЛС Telegram, выполните 2 шага:\n\n` +
-                        `1️⃣ Перейдите к нашему Telegram боту: [Перейти в бот](https://t.me/${botUsername})\n` +
+                        `1️⃣ Перейдите к нашему Telegram боту: [Перейти в бот @Darknerez_bot](https://t.me/${botUsername})\n` +
                         `2️⃣ Запустите его (нажмите **Старт**) и отправьте ему этот секретный цифровой код:\n\n` +
                         `🔑 **\`${pinCode}\`**\n\n` +
                         `*Код одноразовый. Никому его не передавайте.*`
@@ -742,7 +750,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 const embed = new EmbedBuilder()
-                    .setTitle("🚀 Заявки в цену Darkness")
+                    .setTitle("🚀 Заявки в семью Darkness")
                     .setDescription(
 `Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
@@ -1225,22 +1233,27 @@ client.on(Events.InteractionCreate, async (i) => {
                     await i.reply({ content: "❌ Ошибка: канал сбора не найден на сервере.", ephemeral: true });
                 }
             } else if (action === "dms") {
-                await i.reply({ content: "⏳ Начинаю рассылку в ЛС Discord и Telegram...", ephemeral: true });
+                await i.reply({ content: "⏳ Начинаю рассылку в ЛС (включена защита от спам-фильтра Discord)...", ephemeral: true });
                 try {
                     await targetGuild.members.fetch();
                     const targetMembers = targetGuild.members.cache.filter(m => 
-                        targetConfig.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot && !salary.afk[m.id]
+                        targetConfig.PING_ROLES.some(roleId => m.roles.cache.has(roleId)) && !m.user.bot && (!salary.afk || !salary.afk[m.id])
                     );
 
                     let successCount = 0;
                     let tgCount = 0;
+                    let failCount = 0;
 
                     for (const [id, member] of targetMembers) {
-                        // 1. Отправляем в ЛС Дискорда (Ваш старый функционал)
+                        // 1. Отправка в ЛС Discord с паузой
                         try {
                             await member.send(`🔔 **Внимание!**\n${messageContent}`);
                             successCount++;
-                        } catch (e) {}
+                            await sleep(400); // Ожидание 400мс во избежание рейт-лимита Дискорда
+                        } catch (e) {
+                            failCount++;
+                            console.error(`[DISCORD DM FAIL] Ошибка для ${member.user.tag} (${id}): Код ${e.code}`);
+                        }
 
                         // 2. Рассылка в ЛС Telegram (Если у человека привязан профиль)
                         if (salary.tg_users && salary.tg_users[member.id]) {
@@ -1250,9 +1263,12 @@ client.on(Events.InteractionCreate, async (i) => {
                             tgCount++;
                         }
                     }
-                    await i.editReply({ content: `✅ Рассылка завершена!\n📥 В Discord доставлено: ${successCount}\n✈️ В Telegram доставлено: ${tgCount}` });
+                    await i.editReply({ 
+                        content: `✅ **Рассылка успешно завершена!**\n📥 В Discord доставлено: **${successCount}**\n❌ Закрытые ЛС / Ошибки в Discord: **${failCount}**\n✈️ В Telegram доставлено: **${tgCount}**` 
+                    });
                 } catch (e) {
-                    await i.editReply({ content: "❌ Произошла ошибка при попытке рассылки в ЛС." });
+                    console.error("[CRITICAL DM ERROR]", e);
+                    await i.editReply({ content: "❌ Произошла критическая ошибка при попытке генерации рассылки." });
                 }
             }
             return;
