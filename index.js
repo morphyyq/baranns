@@ -4,6 +4,7 @@ process.env.LANG = "en_US.UTF-8";
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
+const https = require("https"); // Модуль для отправки и получения запросов в Telegram
 
 // Генерируем уникальный ID для этой запущенной копии бота
 const INSTANCE_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -28,6 +29,35 @@ const {
     SlashCommandBuilder,
     ChannelType
 } = require("discord.js");
+
+
+// =====================================================
+// TELEGRAM SYSTEM FUNCTIONS
+// =====================================================
+
+// Функция отправки сообщений в Telegram
+function sendTelegramMessage(chatId, text) {
+    if (!process.env.TG_TOKEN) return;
+    const data = JSON.stringify({ chat_id: chatId, text: text, parse_mode: "Markdown" });
+    
+    const options = {
+        hostname: 'api.telegram.org',
+        port: 443,
+        path: `/bot${process.env.TG_TOKEN}/sendMessage`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': data.length
+        }
+    };
+
+    const req = https.request(options, (res) => {
+        res.on('data', () => {});
+    });
+    req.on('error', (error) => { console.error('[TG SEND ERROR]', error); });
+    req.write(data);
+    req.end();
+}
 
 
 // =====================================================
@@ -85,7 +115,7 @@ const SERVERS = {
             "1471553901433192532",
             "1458192704524648701",
             "1458192781217370173",
-            "1468704257606684712" // Роль Рекруты добавлена сюда, чтобы они могли нажимать на кнопки
+            "1468704257606684712"
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
@@ -130,9 +160,11 @@ function loadDB() {
         if (!data.reports) data.reports = {};
         if (!data.afk) data.afk = {};
         if (!data.archive) data.archive = {};
+        if (!data.tg_users) data.tg_users = {}; // Связка Discord ID -> Telegram Chat ID
+        if (!data.tg_codes) data.tg_codes = {}; // Временные коды привязки аккаунтов
         return data;
     } catch {
-        return { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {} };
+        return { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {}, tg_users: {}, tg_codes: {} };
     }
 }
 
@@ -324,6 +356,51 @@ async function updateAFKEmbed(guild) {
 
 
 // =====================================================
+// TELEGRAM LONG POLLING BOT UPDATER
+// =====================================================
+let tgOffset = 0;
+function checkTelegramUpdates() {
+    if (!process.env.TG_TOKEN) return;
+    
+    https.get(`https://api.telegram.org/bot${process.env.TG_TOKEN}/getUpdates?offset=${tgOffset}&timeout=10`, (res) => {
+        let rawData = '';
+        res.on('data', (chunk) => rawData += chunk);
+        res.on('end', () => {
+            try {
+                const data = JSON.parse(rawData);
+                if (data.ok && data.result.length > 0) {
+                    for (const update of data.result) {
+                        tgOffset = update.update_id + 1;
+                        
+                        if (update.message && update.message.text) {
+                            const text = update.message.text.trim();
+                            const chatId = update.message.chat.id;
+                            
+                            // Проверяем, ввёл ли человек валидный секретный пин-код из ДС
+                            if (salary.tg_codes && salary.tg_codes[text]) {
+                                const discordId = salary.tg_codes[text];
+                                
+                                salary.tg_users[discordId] = chatId; // Сохраняем связку
+                                delete salary.tg_codes[text]; // Удаляем использованный пин
+                                saveDB(salary);
+                                
+                                sendTelegramMessage(chatId, "✅ **Успешно!** Ваш Telegram аккаунт привязан к вашему Discord. Теперь уведомления о сборах семьи **Darkness** будут приходить прямо сюда в ЛС!");
+                            } else if (text === "/start") {
+                                sendTelegramMessage(chatId, "👋 Привет! Используйте команду `/link` в Discord, получите шестизначный код и отправьте его сюда, чтобы связать аккаунты.");
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+            setTimeout(checkTelegramUpdates, 1000); // Повторяем запрос
+        });
+    }).on('error', () => {
+        setTimeout(checkTelegramUpdates, 5000);
+    });
+}
+
+
+// =====================================================
 // SYNC CROSS-SERVER JOIN ROLES
 // =====================================================
 client.on(Events.GuildMemberAdd, async (member) => {
@@ -346,6 +423,7 @@ client.once(Events.ClientReady, async () => {
     console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
     const commands = [
+        new SlashCommandBuilder().setName("link").setDescription("Связать свой аккаунт с Telegram ботом для получения уведомлений в ЛС"),
         new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
@@ -377,6 +455,10 @@ client.once(Events.ClientReady, async () => {
         await updateOnlineMonitor();
         await updateAFKEmbed(mainGuild);
     }
+    
+    // Запускаем систему проверки сообщений Telegram
+    checkTelegramUpdates();
+    
     setInterval(updateOnlineMonitor, 60000);
 });
 
@@ -547,14 +629,38 @@ client.on(Events.InteractionCreate, async (i) => {
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             
-            // Защита команд по ролям (Рекруты теперь могут проверять баланс и ранк!)
-            if (i.commandName !== "rank" && i.commandName !== "balance") {
+            if (i.commandName !== "rank" && i.commandName !== "balance" && i.commandName !== "link") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
                 if (!hasPermission) {
                     await i.reply({ content: "❌ Вы не имеете доступа к управлению этой командой.", ephemeral: true });
                     return;
                 }
+            }
+
+            // Обработка новой команды /link
+            if (i.commandName === "link") {
+                const pinCode = Math.floor(100000 + Math.random() * 900000).toString();
+                
+                salary.tg_codes[pinCode] = i.user.id;
+                saveDB(salary);
+
+                // Обязательно впишите юзернейм своего бота сюда без символа @
+                const botUsername = "ИМЯ_ВАШЕГО_БОТА_BOT"; 
+
+                const embedLink = new EmbedBuilder()
+                    .setTitle("🔗 Получение сборов в Telegram")
+                    .setDescription(
+                        `Чтобы бот мог оповещать вас о сборах семьи прямо в ЛС Telegram, выполните 2 шага:\n\n` +
+                        `1️⃣ Перейдите к нашему Telegram боту: [Перейти в бот](https://t.me/${botUsername})\n` +
+                        `2️⃣ Запустите его (нажмите **Старт**) и отправьте ему этот секретный цифровой код:\n\n` +
+                        `🔑 **\`${pinCode}\`**\n\n` +
+                        `*Код одноразовый. Никому его не передавайте.*`
+                    )
+                    .setColor("Purple");
+
+                await i.reply({ embeds: [embedLink], ephemeral: true });
+                return;
             }
 
             if (i.commandName === "balance") {
@@ -636,7 +742,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 const embed = new EmbedBuilder()
-                    .setTitle("🚀 Заявки в семью Darkness")
+                    .setTitle("🚀 Заявки в цену Darkness")
                     .setDescription(
 `Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
@@ -1075,7 +1181,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     .setEmoji("📣"),
                 new ButtonBuilder()
                     .setCustomId(`sbor_dms_${guildId}_${activity}_${code}`)
-                    .setLabel("Отправить в ЛС")
+                    .setLabel("Отправить в ЛС (DS + TG)")
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji("📩"),
                 new ButtonBuilder()
@@ -1119,7 +1225,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     await i.reply({ content: "❌ Ошибка: канал сбора не найден на сервере.", ephemeral: true });
                 }
             } else if (action === "dms") {
-                await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
+                await i.reply({ content: "⏳ Начинаю рассылку в ЛС Discord и Telegram...", ephemeral: true });
                 try {
                     await targetGuild.members.fetch();
                     const targetMembers = targetGuild.members.cache.filter(m => 
@@ -1127,15 +1233,24 @@ client.on(Events.InteractionCreate, async (i) => {
                     );
 
                     let successCount = 0;
+                    let tgCount = 0;
+
                     for (const [id, member] of targetMembers) {
+                        // 1. Отправляем в ЛС Дискорда (Ваш старый функционал)
                         try {
                             await member.send(`🔔 **Внимание!**\n${messageContent}`);
                             successCount++;
-                        } catch (e) {
-                            // Пропуск закрытых ЛС
+                        } catch (e) {}
+
+                        // 2. Рассылка в ЛС Telegram (Если у человека привязан профиль)
+                        if (salary.tg_users && salary.tg_users[member.id]) {
+                            const userTgId = salary.tg_users[member.id];
+                            const tgMessage = `🔔 **ВНИМАНИЕ (СБОР ГРУППЫ)!**\n\nСбор на мероприятие: *${activity.toUpperCase()}*\nГруппа: \`${code}\`\n\nВсем быть! Кого не будет = 2 варна.`;
+                            sendTelegramMessage(userTgId, tgMessage);
+                            tgCount++;
                         }
                     }
-                    await i.editReply({ content: `✅ Рассылка завершена! Доставлено: ${successCount} сообщений.` });
+                    await i.editReply({ content: `✅ Рассылка завершена!\n📥 В Discord доставлено: ${successCount}\n✈️ В Telegram доставлено: ${tgCount}` });
                 } catch (e) {
                     await i.editReply({ content: "❌ Произошла ошибка при попытке рассылки в ЛС." });
                 }
@@ -1236,7 +1351,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
                     ...(config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })) : []),
-                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] } // Рекруты получают доступ к чтению тикета
+                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] }
                 ]
             });
 
