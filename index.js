@@ -348,6 +348,7 @@ client.once(Events.ClientReady, async () => {
     const commands = [
         new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
+        new SlashCommandBuilder().setName("all").setDescription("Посмотреть актуальную ведомость всех выплат"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
         new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
         new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений"),
@@ -427,6 +428,30 @@ client.on(Events.MessageCreate, async (msg) => {
             });
         }
 
+        if (msg.content === "/all") {
+            let listString = "";
+            let hasActiveBalances = false;
+
+            for (const [recruiterId, bal] of Object.entries(salary.balances)) {
+                if (bal > 0) {
+                    listString += `• <@${recruiterId}> — **$${bal.toLocaleString()}**\n`;
+                    hasActiveBalances = true;
+                }
+            }
+
+            if (!hasActiveBalances) {
+                listString = "*На этой неделе выплат пока нет.*";
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle("💰 Ведомость выплат рекрут-состава")
+                .setDescription(listString)
+                .setColor("Green")
+                .setTimestamp();
+
+            return msg.reply({ embeds: [embed] });
+        }
+
         // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
@@ -451,7 +476,8 @@ client.on(Events.MessageCreate, async (msg) => {
                 }
             }
 
-            const auditChannel = await client.channels.fetch(config.CHANNELS.AUDIT).catch(() => null);
+            // Перенаправление напрямую в указанный вами канал
+            const auditChannel = await client.channels.fetch("1500501911848095906").catch(() => null);
             if (auditChannel) {
                 const file = new AttachmentBuilder(att.url, { name: "screen.png" });
                 
@@ -496,7 +522,8 @@ client.on(Events.MessageCreate, async (msg) => {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
 
-            const audit = await client.channels.fetch(config.CHANNELS.AUDIT);
+            // Перенаправление напрямую в указанный вами канал
+            const audit = await client.channels.fetch("1500501911848095906").catch(() => null);
             if (!audit) return;
 
             const file = new AttachmentBuilder(att.url, { name: "screen.png" });
@@ -547,8 +574,8 @@ client.on(Events.InteractionCreate, async (i) => {
         // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             
-            // Защита команд по ролям
-            if (i.commandName !== "rank" && i.commandName !== "balance") {
+            // Защита команд по ролям (добавлено исключение для "all")
+            if (i.commandName !== "rank" && i.commandName !== "balance" && i.commandName !== "all") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
                 if (!hasPermission) {
@@ -560,6 +587,31 @@ client.on(Events.InteractionCreate, async (i) => {
             if (i.commandName === "balance") {
                 const currentBal = salary.balances[i.user.id] || 0;
                 await i.reply({ content: `💰 Баланс: $${currentBal.toLocaleString()}`, ephemeral: true });
+                return;
+            }
+
+            if (i.commandName === "all") {
+                let listString = "";
+                let hasActiveBalances = false;
+
+                for (const [recruiterId, bal] of Object.entries(salary.balances)) {
+                    if (bal > 0) {
+                        listString += `• <@${recruiterId}> — **$${bal.toLocaleString()}**\n`;
+                        hasActiveBalances = true;
+                    }
+                }
+
+                if (!hasActiveBalances) {
+                    listString = "*На этой неделе выплат пока нет.*";
+                }
+
+                const embed = new EmbedBuilder()
+                    .setTitle("💰 Ведомость выплат рекрут-состава")
+                    .setDescription(listString)
+                    .setColor("Green")
+                    .setTimestamp();
+
+                await i.reply({ embeds: [embed], ephemeral: true });
                 return;
             }
 
@@ -636,7 +688,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 const embed = new EmbedBuilder()
-                    .setTitle("🚀 Заявки в семью Darkness")
+                    .setTitle("🚀 Заявки в тему Darkness")
                     .setDescription(
 `Нажмите на кнопку ниже, чтобы подать заявку в нашу семью.
 
@@ -1153,7 +1205,6 @@ client.on(Events.InteractionCreate, async (i) => {
             const logChannel = await i.guild.channels.fetch(logChannelId).catch(() => null);
 
             if (logChannel) {
-                // Пытаемся получить оригинальный Embed заявки из тикета, чтобы оформить лог как в image_db211c.png
                 let originalEmbed;
                 const messages = await i.channel.messages.fetch({ limit: 50 }).catch(() => null);
                 if (messages) {
@@ -1175,7 +1226,6 @@ client.on(Events.InteractionCreate, async (i) => {
                     
                     await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
                 } else {
-                    // Резервный вариант, если Embed по каким-то причинам не найден
                     const rejectEmbed = new EmbedBuilder()
                         .setTitle("❌ Отказ по заявке в тему")
                         .setDescription(`👤 **Кандидат:** <@${targetId}>\n🔒 **Отклонил:** <@${i.user.id}>\n📝 **Причина:** ${reason}`)
@@ -1261,7 +1311,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
                     ...(config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })) : []),
-                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] } // Рекруты получают доступ к чтению тикета
+                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] }
                 ]
             });
 
