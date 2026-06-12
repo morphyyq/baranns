@@ -606,7 +606,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     for (const [id, member] of targetMembers) {
                         try {
                             // Отправляем сообщение в ЛС
-                            await member.send(`🔔 **Оповещение от <@${i.user.id}>:**\n\n${textMsg}`);
+                            await member.send(`🔔 **Оповещение от <@${i.user.id}>:**\n\n## ${textMsg} ##`);
                             successCount++;
                         } catch (e) {
                             // Игнорируем ошибку, если у человека закрыты ЛС
