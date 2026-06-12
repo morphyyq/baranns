@@ -347,6 +347,14 @@ client.once(Events.ClientReady, async () => {
     console.log(`[BOT] ONLINE: ${client.user.tag} | ID КОПИИ: ${INSTANCE_ID}`);
 
     const commands = [
+        new SlashCommandBuilder()
+            .setName("all")
+            .setDescription("Разослать сообщение в ЛС всему составу")
+            .addStringOption(opt => 
+                opt.setName("message")
+                .setDescription("Текст, который будет отправлен в ЛС")
+                .setRequired(true)
+            ),
         new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
@@ -570,13 +578,48 @@ client.on(Events.InteractionCreate, async (i) => {
         if (i.isChatInputCommand()) {
             
             // Защита команд по ролям
-            if (i.commandName !== "rank" && i.commandName !== "balance") {
+            if (i.commandName !== "rank" && i.commandName !== "balance" && i.commandName !== "all") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
                 if (!hasPermission) {
                     await i.reply({ content: "❌ Вы не имеете доступа к управлению этой командой.", ephemeral: true });
                     return;
                 }
+            }
+
+            if (i.commandName === "all") {
+                const textMsg = i.options.getString("message"); // Получаем текст
+                
+                await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
+
+                try {
+                    // Подгружаем всех участников сервера
+                    await i.guild.members.fetch();
+                    
+                    // Выбираем только тех, кто: имеет нужную роль и не бот (АФК игнорируем)
+                    const targetMembers = i.guild.members.cache.filter(m => 
+                        m.roles.cache.has("1458410756453306490") && 
+                        !m.user.bot
+                    );
+
+                    let successCount = 0;
+                    for (const [id, member] of targetMembers) {
+                        try {
+                            // Отправляем сообщение в ЛС
+                            await member.send(`🔔 **Оповещение от <@${i.user.id}>:**\n\n${textMsg}`);
+                            successCount++;
+                        } catch (e) {
+                            // Игнорируем ошибку, если у человека закрыты ЛС
+                        }
+                    }
+                    
+                    // Обновляем наше сообщение об успешном выполнении
+                    await i.editReply({ content: `✅ Рассылка завершена! Сообщение доставлено: **${successCount}** участникам с ролью.` });
+                } catch (e) {
+                    console.error("[ALL COMMAND ERROR]", e);
+                    await i.editReply({ content: "❌ Произошла ошибка при попытке рассылки в ЛС." });
+                }
+                return;
             }
 
             if (i.commandName === "balance") {
