@@ -588,7 +588,7 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "all") {
-                const textMsg = i.options.getString("message"); // Получаем текст
+                const textMsg = i.options.getString("text"); // Изменили "message" на "text"
                 
                 await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
 
