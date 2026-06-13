@@ -85,7 +85,7 @@ const SERVERS = {
             "1471553901433192532",
             "1458192704524648701",
             "1458192781217370173",
-            "1468704257606684712" // Роль Рекруты добавлена сюда, чтобы они могли нажимать на кнопки
+            "1468704257606684712" 
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
@@ -130,7 +130,7 @@ function loadDB() {
         if (!data.reports) data.reports = {};
         if (!data.afk) data.afk = {};
         if (!data.archive) data.archive = {};
-        if (!data.auditMessages) data.auditMessages = {}; // Хранилище связей ID Кандидата -> ID сообщения в аудите
+        if (!data.auditMessages) data.auditMessages = {};
         return data;
     } catch {
         return { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {}, auditMessages: {} };
@@ -404,13 +404,11 @@ client.on(Events.GuildMemberRemove, async (member) => {
         if (salary.recruits && salary.recruits[member.id]) {
             const recruiterId = salary.recruits[member.id];
             
-            // Списываем баланс с рекрутера, так как человек покинул сервер
             if (salary.balances[recruiterId]) {
                 salary.balances[recruiterId] -= 10000;
                 if (salary.balances[recruiterId] < 0) salary.balances[recruiterId] = 0;
             }
 
-            // Убираем галочку бота с сообщения в аудите
             if (salary.auditMessages && salary.auditMessages[member.id]) {
                 const config = SERVERS[member.guild.id];
                 if (config && config.CHANNELS && config.CHANNELS.AUDIT) {
@@ -420,17 +418,14 @@ client.on(Events.GuildMemberRemove, async (member) => {
                         const auditMsg = await auditChannel.messages.fetch(auditMsgId).catch(() => null);
                         
                         if (auditMsg) {
-                            // Ищем реакцию-галочку, поставленную ботом, и удаляем её
                             const reaction = auditMsg.reactions.cache.find(r => r.emoji.name === "✅");
                             if (reaction) {
                                 await reaction.users.remove(client.user.id).catch(() => null);
                             }
-                            // Дополнительно вешаем крестик, чтобы визуально было видно, что кандидат вышел
                             await auditMsg.react("❌").catch(() => null);
                         }
                     }
                 }
-                // Удаляем запись о сообщении из памяти
                 delete salary.auditMessages[member.id];
             }
 
@@ -461,7 +456,6 @@ client.on(Events.MessageCreate, async (msg) => {
             });
         }
 
-        // ПРОВЕРКА СКРИНШОТА В ЗАКРЫТОМ ТИКЕТЕ (ОТЧЕТ ПЛАНШЕТА)
         if (msg.channel.name?.startsWith("closed-")) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
             if (!att) return;
@@ -489,21 +483,18 @@ client.on(Events.MessageCreate, async (msg) => {
             if (auditChannel) {
                 const file = new AttachmentBuilder(att.url, { name: "screen.png" });
                 
-                // Отсылаем скриншот чистым текстом без эмбеда и без кнопок управления
                 const auditMsg = await auditChannel.send({ 
                     content: `📋 **Отчёт по принятой заявке**\n👤 **Рекрутер:** <@${msg.author.id}>\n👤 **Принятый кандидат:** ${candidateText}\n📂 **Тикет:** \`${msg.channel.name}\``,
                     files: [file] 
                 });
 
-                // Просто ставим галочку ботом
                 await auditMsg.react("✅").catch(() => null);
 
-                // Начисляем баланс сразу автоматически, фиксируем кандидата и привязываем ID сообщения
                 salary.balances[msg.author.id] = (salary.balances[msg.author.id] || 0) + 10000;
                 
                 if (candidateId && candidateId !== "unknown") {
                     salary.recruits[candidateId] = msg.author.id;
-                    salary.auditMessages[candidateId] = auditMsg.id; // Запоминаем ID сообщения для отслеживания ливов
+                    salary.auditMessages[candidateId] = auditMsg.id; 
                 }
 
                 saveDB(salary);
@@ -517,7 +508,6 @@ client.on(Events.MessageCreate, async (msg) => {
             return;
         }
 
-        // SCREEN SYSTEM (Для обычных отчетов рекрутов)
         if (config.CHANNELS && msg.channel.id === config.CHANNELS.SCREEN) {
             if (processed.has(msg.id)) return;
             processed.add(msg.id);
@@ -574,10 +564,8 @@ client.on(Events.InteractionCreate, async (i) => {
         if (!i.guild) return;
         const config = SERVERS[i.guild.id];
 
-        // СЛЭШ-КОМАНДЫ
         if (i.isChatInputCommand()) {
             
-            // Защита команд по ролям
             if (i.commandName !== "rank" && i.commandName !== "balance" && i.commandName !== "all") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
@@ -588,15 +576,12 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "all") {
-                const textMsg = i.options.getString("text"); // Изменили "message" на "text"
+                const textMsg = i.options.getString("text"); 
                 
                 await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
 
                 try {
-                    // Подгружаем всех участников сервера
                     await i.guild.members.fetch();
-                    
-                    // Выбираем только тех, кто: имеет нужную роль и не бот (АФК игнорируем)
                     const targetMembers = i.guild.members.cache.filter(m => 
                         m.roles.cache.has("1458410756453306490") && 
                         !m.user.bot
@@ -605,15 +590,11 @@ client.on(Events.InteractionCreate, async (i) => {
                     let successCount = 0;
                     for (const [id, member] of targetMembers) {
                         try {
-                            // Отправляем сообщение в ЛС
                             await member.send(`🔔 **Оповещение от <@${i.user.id}>:**\n\n## ${textMsg} ##`);
                             successCount++;
-                        } catch (e) {
-                            // Игнорируем ошибку, если у человека закрыты ЛС
-                        }
+                        } catch (e) {}
                     }
                     
-                    // Обновляем наше сообщение об успешном выполнении
                     await i.editReply({ content: `✅ Рассылка завершена! Сообщение доставлено: **${successCount}** участникам с ролью.` });
                 } catch (e) {
                     console.error("[ALL COMMAND ERROR]", e);
@@ -702,19 +683,20 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 
+                // РАСТЯГИВАЕМ ЭМБЕД НЕВИДИМЫМИ СИМВОЛАМИ ПО ШИРИНЕ ДЛЯ ВИЗУАЛА, КАК НА СКРИНЕ
                 const embed = new EmbedBuilder()
                     .setDescription(
-`❗️ **Принимаем заявки на две роли ACADEMY/CAPTURE** ❗️
+`❗ **Принимаем заявки на две роли ACADEMY/CAPTURE** ❗
 
-**На роль CAPTURE требуются откаты с MCL/CAPT И GUNGAME.**
-**Если претендуете на роль ACADEMY — откаты не нужны..**
+На роль **CAPTURE** требуются откаты с MCL/CAPT И GUNGAME.
+Если претендуете на роль **ACADEMY** — откаты не нужны.
 
 **Срок рассмотрения заявок: от 3 до 5 рабочих дней.** Решение направляется ботом в личные сообщения. Отсутствие ответа в указанный срок означает отказ в заявке.
 
-**Будем рады видеть вас в наших рядах!**
+**Будем рады видеть вас в наших рядах!** В семье активно функционируют и набирают людей специализированные отряды: **Capture, RP, Farm и Recruit**.
 
-> ⚠️ Заявки в семью принимаются только на сервер **Denver**.
-> ВСЕ ЗАЯВКИ МИНИМУМ ОТ 13 ЛЕТ!
+⚠️ Заявки в семью принимаются только на сервер **Denver**.
+ВСЕ ЗАЯВКИ МИНИМУМ ОТ 13 ЛЕТ!
 
 Внимательно прочитайте шаблон заявки при её подаче — там тоже есть информация.
 В заявке на CAPTURE требуются полные откаты с GG и МП (MCL, ВЗЗ, Capt).
@@ -723,27 +705,30 @@ client.on(Events.InteractionCreate, async (i) => {
 • Откаты с GG должны быть записаны не более **1 недели** назад.
 • Откаты с МП должны быть записаны не более **60 дней** назад.
 • Откаты не должны быть сделаны как нарезка или мувик.
-• Минимальная длина откатов с GG — **от 5 минут.**
+• Минимальная длина откатов с GG — **от 5 минут**.
 • Любое нарушение условий подачи откатов — скорее всего будет причиной **отказа** без исключений.
 
-> ⚠️ После подачи заявки **следите за ЛС** или за запросами на общение в Discord. На обзвон рекрут позовёт вас **только в Discord Darkness** — ни в ЛС, ни в другой сервер.
+⚠️ После подачи заявки **следите за ЛС** или за запросами на общение в Discord. На обзвон рекрут позовёт вас **только в Discord Darkness** — ни в ЛС, ни в другой сервер.
 
 В случае игнорирования рекрута в ЛС после принятия заявки — заявка будет **автоматически отклонена**, и вам нужно будет заново её оформлять.
 Если вам отказали — накладывается **КД 2 недели** для повторной заявки.
 
-\`\`\`
-СЕРЬЁЗНО ОТНЕСИТЕСЬ К ШАБЛОНУ ПОДАЧИ. Внимательно читайте и проверяйте все пункты заполнения. Сообщения в ЛС по типу «Не увидел», «Плохо прочитал», «Не понял», «Протупил» и т.д. будут рассматриваться как отказ.
-\`\`\``
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**СЕРЬЁЗНО ОТНЕСИТЕСЬ К ШАБЛОНУ ПОДАЧИ.** Внимательно читайте и проверяйте все пункты заполнения. Сообщения в ЛС по типу «Не увидел», «Плохо прочитал», «Не понял», «Протупил» и т.д. будут рассматриваться как отказ.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**• Подать заявку**
+\u200B` // Пустой невидимый символ для фикса ширины нижней части
                     )
-                    .setColor("#ff0000"); // Красный цвет полоски как на скриншоте
+                    .setColor("#E74C3C"); // Красный цвет в тон скрина из запроса
 
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId("apply_menu")
                         .setPlaceholder("Выберите роль для подачи заявки")
                         .addOptions(
-                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy", emoji: "🎓" },
-                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture", emoji: "⚔️" }
+                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
+                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
                         )
                 );
 
@@ -870,7 +855,6 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // КНОПКА АРХИВНОЙ АНКЕТЫ
         if (i.isButton() && i.customId.startsWith("view_archive_app_")) {
             const tId = i.customId.replace("view_archive_app_", "");
             const arch = salary.archive[tId];
@@ -887,7 +871,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОБРАБОТКА СИСТЕМЫ АФК СТАТУСОВ
         if (i.isButton() && (i.customId === "afk_enter" || i.customId === "afk_leave")) {
             if (i.customId === "afk_enter") {
                 salary.afk[i.user.id] = new Date().toISOString();
@@ -904,7 +887,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ВЫЗОВ МОДАЛКИ ОТЧЕТА ПОВЫШЕНИЯ
         if (i.isButton() && i.customId === "open_report_modal") {
             const modal = new ModalBuilder()
                 .setCustomId("modal_report_submit")
@@ -933,7 +915,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОТПРАВКА МОДАЛКИ ОТЧЕТА И СОЗДАНИЕ ТТИКЕТА ОТЧЕТА
         if (i.isModalSubmit() && i.customId === "modal_report_submit") {
             const staticIdStr = i.fields.getTextInputValue("report_static_id");
             const proofLink = i.fields.getTextInputValue("report_proof_link");
@@ -973,7 +954,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОБРАБОТКА КНОПОК ПРИНЯТИЯ/ОТКЛОНЕНИЯ ТТИКЕТА ОТЧЕТА
         if (i.isButton() && i.customId.startsWith("report_")) {
             const parts = i.customId.split("_");
             const action = parts[1];
@@ -1037,7 +1017,6 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // ОБРАБОТКА ДЕЙСТВИЙ ИЗ КАНАЛА УВЕДОМЛЕНИЙ ПОВЫШЕНИЯ
         if (i.isButton() && i.customId.startsWith("p_")) {
             const parts = i.customId.split("_");
             const action = parts[1];
@@ -1075,7 +1054,6 @@ client.on(Events.InteractionCreate, async (i) => {
             }
         }
 
-        // ОБРАБОТКА РУЧНОЙ СИСТЕМЫ СБОРОВ
         if (i.isButton() && i.customId.startsWith("group_start_")) {
             const faction = i.customId.replace("group_start_", "");
             
@@ -1202,9 +1180,7 @@ client.on(Events.InteractionCreate, async (i) => {
                         try {
                             await member.send(`🔔 **Внимание!**\n${messageContent}`);
                             successCount++;
-                        } catch (e) {
-                            // Пропуск закрытых ЛС
-                        }
+                        } catch (e) {}
                     }
                     await i.editReply({ content: `✅ Рассылка завершена! Доставлено: ${successCount} сообщений.` });
                 } catch (e) {
@@ -1214,12 +1190,10 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОБРАБОТКА СИСТЕМЫ АУДИТА И ЗАЯВОК
         if (i.isModalSubmit() && i.customId.startsWith("app_reject_modal_")) {
             const targetId = i.customId.replace("app_reject_modal_", "");
             const reason = i.fields.getTextInputValue("reject_reason_input");
 
-            // ИСПОЛЬЗУЕМ КАНАЛ AUDIT_APP
             const logChannelId = config.CHANNELS.AUDIT_APP || "1464575195418460417";
             const logChannel = await i.guild.channels.fetch(logChannelId).catch(() => null);
 
@@ -1261,7 +1235,6 @@ client.on(Events.InteractionCreate, async (i) => {
 
         if (!config) return;
 
-        // МЕНЮ ВЫБОРА (ОТКРЫТИЕ МОДАЛКИ ЗАЯВКИ)
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -1289,7 +1262,6 @@ client.on(Events.InteractionCreate, async (i) => {
             return;
         }
 
-        // ОТПРАВКА МОДАЛКИ И СОЗДАНИЕ ТТИКЕТА
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
             if (modalLocks.has(i.user.id)) return;
             modalLocks.add(i.user.id);
@@ -1330,7 +1302,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
                     ...(config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })) : []),
-                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] } // Рекруты получают доступ к чтению тикета
+                    { id: "1468704257606684712", allow: ["ViewChannel", "SendMessages"] } 
                 ]
             });
 
@@ -1376,7 +1348,6 @@ ${data.q4}`;
             return;
         }
 
-        // ОБРАБОТКА ВЫБОРА ВОЙСА
         if (i.isChannelSelectMenu() && i.customId.startsWith("call_voice_")) {
             const targetId = i.customId.replace("call_voice_", "");
             const voiceChannelId = i.values[0];
@@ -1408,7 +1379,6 @@ ${data.q4}`;
             return;
         }
 
-        // ОБРАБОТКА КНОПОК
         if (i.isButton()) {
             const parts = i.customId.split("_");
             const member = await i.guild.members.fetch(i.user.id);
@@ -1418,7 +1388,6 @@ ${data.q4}`;
             if (parts[0] === "report") return;
             if (parts[0] === "p") return;
 
-            // ОБРАБОТКА КНОПОК ПОДТВЕРЖДЕНИЯ В КАНАЛЕ АУДИТА (Остается для обратной совместимости со старыми логами)
             if (parts[0] === "audit") {
                 const action = parts[1];
 
@@ -1474,7 +1443,6 @@ ${data.q4}`;
                 return;
             }
 
-            // Старые кнопки обычных отчетов скриншотов
             if (parts[0] === "accept" || parts[0] === "reject") {
                 const action = parts[0];
                 const targetId = parts[1];
@@ -1493,7 +1461,6 @@ ${data.q4}`;
                 return;
             }
 
-            // Кнопки управления тикетом (app)
             if (parts[0] === "app") {
                 const action = parts[1];
                 const targetId = parts[2];
@@ -1529,7 +1496,6 @@ ${data.q4}`;
                     embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
                     await i.update({ embeds: [embed], components: [] });
 
-                    // --- ИНТЕГРАЦИЯ С AUDIT_APP ---
                     const auditChannelId = config.CHANNELS.AUDIT_APP;
                     if (auditChannelId) {
                         const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
@@ -1545,7 +1511,6 @@ ${data.q4}`;
                             await auditChannel.send({ embeds: [auditEmbed] }).catch(() => null);
                         }
                     }
-                    // ------------------------------
 
                     await i.channel.send({
                         content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **отправьте сюда скриншот с планшета**, чтобы зафиксировать отчет в аудите.`
@@ -1557,7 +1522,6 @@ ${data.q4}`;
                     embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
                     await i.update({ embeds: [embed] });
 
-                    // --- ИНТЕГРАЦИЯ С AUDIT_APP ---
                     const auditChannelId = config.CHANNELS.AUDIT_APP;
                     if (auditChannelId) {
                         const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
@@ -1573,7 +1537,6 @@ ${data.q4}`;
                             await auditChannel.send({ embeds: [auditEmbed] }).catch(() => null);
                         }
                     }
-                    // ------------------------------
 
                     await i.channel.send(`⏳ Администратор <@${i.user.id}> взял заявку на рассмотрение.`);
                     return;
@@ -1635,4 +1598,4 @@ process.on("SIGINT", shutdown);
 // =====================================================
 // LOGIN
 // =====================================================
-client.login(process.env.TOKEN);[cite: 1]
+client.login(process.env.TOKEN);
