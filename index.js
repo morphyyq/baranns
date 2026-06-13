@@ -733,7 +733,7 @@ client.on(Events.InteractionCreate, async (i) => {
 **СЕРЬЁЗНО ОТНЕСИТЕСЬ К ШАБЛОНУ ПОДАЧИ.** Внимательно читайте и проверяйте все пункты заполнения. Сообщения в ЛС по типу «Не увидел», «Плохо прочитал», «Не понял», «Протупил» и т.д. будут рассматриваться как отказ.`
                     )
                     .setColor("#2b2d31")
-                    .setImage("https://raw.githubusercontent.com/ТВОЙ_GITHUB/ТВОЙ_РЕПОЗИТОРИЙ/main/darkness.png"); // ВСТАВЬ СВОЮ RAW ССЫЛКУ НА КАРТИНКУ С ГИТХАБА СЮДА
+                    .setImage("https://raw.githubusercontent.com/morphyyq/baranns/dea8cf73fe0f5dfa8ebefc4abb199690e3a07a11/darkness.png"); // ВСТАВЬ СВОЮ RAW ССЫЛКУ НА КАРТИНКУ С ГИТХАБА СЮДА
 
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
