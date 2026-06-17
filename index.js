@@ -696,16 +696,9 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 
-                // 1. Получаем вложение
-                const attachment = i.options.getAttachment("image");
-                
-                // 2. Создаем объект AttachmentBuilder
-                const file = new AttachmentBuilder(attachment.url, { name: "banner.png" });
-                
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
-                    // 3. Указываем, что картинка берется из прикрепленного файла
-                    .setImage("attachment://banner.png") 
+                    // .setImage("attachment://banner.png") // Эту строку мы убрали
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -734,23 +727,15 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // 4. Отправляем всё одним сообщением (файлы + эмбед + компоненты)
+                // Отправляем без файлов
                 await channel.send({ 
                     embeds: [embed], 
-                    files: [file], 
                     components: [menu] 
                 });
 
-                await i.reply({ content: "✅ Панель успешно создана!", ephemeral: true });
+                await i.reply({ content: "✅ Панель успешно создана (без баннера)!", ephemeral: true });
                 return;
             }
-
-            if (i.commandName === "report_panel") {
-                const channel = await i.guild.channels.fetch("1513649382396919979").catch(() => null);
-                if (!channel) {
-                    await i.reply({ content: "❌ Ошибка: целевой канал отчетов не найден.", ephemeral: true });
-                    return;
-                }
 
                 const embed = new EmbedBuilder()
                     .setTitle("🔮 СИСТЕМА ПОВЫШЕНИЯ | DARKNESS FAMQ")
