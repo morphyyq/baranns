@@ -355,7 +355,14 @@ client.once(Events.ClientReady, async () => {
                 .setDescription("Текст, который будет отправлен в ЛС")
                 .setRequired(true)
             ),
-        new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
+        new SlashCommandBuilder()
+            .setName("panel")
+            .setDescription("Отправить panel для подачи заявок")
+            .addAttachmentOption(opt => 
+                opt.setName("banner")
+                   .setDescription("Загрузите картинку/баннер для панели")
+                   .setRequired(true)
+            ),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
         new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
@@ -576,7 +583,7 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "all") {
-                const textMsg = i.options.getString("text"); 
+                const textMsg = i.options.getString("message"); 
                 
                 await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
 
@@ -680,52 +687,47 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "panel") {
-                if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
-                const channel = await client.channels.fetch(config.CHANNELS.PANEL);
+                const targetChannelId = "1458410655697731730";
+                const channel = await client.channels.fetch(targetChannelId).catch(() => null);
                 
-                // РАСТЯГИВАЕМ ЭМБЕД НЕВИДИМЫМИ СИМВОЛАМИ ПО ШИРИНЕ ДЛЯ ВИЗУАЛА, КАК НА СКРИНЕ
+                if (!channel) {
+                    return i.reply({ content: `❌ Ошибка: Канал <#${targetChannelId}> не найден или у бота нет туда доступа.`, ephemeral: true });
+                }
+
+                const bannerFile = i.options.getAttachment("banner");
+
+                const embedDescription = `👋 **Путь в семью начинается здесь!**
+
+• Заявки в семью принимаются только на сервере 🛡️ **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+
+***
+
+• **Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты — заявка будет отклонена.**
+
+• **Срок рассмотрения заявки:** от 1 до 5 дней.
+• **Важно:** если у вас нет подходящих откатов — заявка будет **отклонена**.
+
+**• Дополнительные правила к подаче заявки:**
+
+⠀• Откаты с GG — не более 1 недели назад (не менее 6 минут).
+⠀• Откаты с МП (ВЗЗ, MCL, Capt) — не более 60 дней назад. **— при наличии!**
+⠀• Откаты должны быть не в виде мувика/нарезки.
+⠀• Откаты должны быть с сайги и со спешика (минимум 2 отката).
+⠀• Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
+
+***
+
+**• Выберите пункт в выпадающем меню:**`;
+
                 const embed = new EmbedBuilder()
-                    .setDescription(
-`❗ **Принимаем заявки на две роли ACADEMY/CAPTURE** ❗
-
-На роль **CAPTURE** требуются откаты с MCL/CAPT И GUNGAME.
-Если претендуете на роль **ACADEMY** — откаты не нужны.
-
-**Срок рассмотрения заявок: от 3 до 5 рабочих дней.** Решение направляется ботом в личные сообщения. Отсутствие ответа в указанный срок означает отказ в заявке.
-
-**Будем рады видеть вас в наших рядах!** В семье активно функционируют и набирают людей специализированные отряды: **Capture, RP, Farm и Recruit**.
-
-⚠️ Заявки в семью принимаются только на сервер **Denver**.
-ВСЕ ЗАЯВКИ МИНИМУМ ОТ 13 ЛЕТ!
-
-Внимательно прочитайте шаблон заявки при её подаче — там тоже есть информация.
-В заявке на CAPTURE требуются полные откаты с GG и МП (MCL, ВЗЗ, Capt).
-
-**Дополнительные правила в заявке:**
-• Откаты с GG должны быть записаны не более **1 недели** назад.
-• Откаты с МП должны быть записаны не более **60 дней** назад.
-• Откаты не должны быть сделаны как нарезка или мувик.
-• Минимальная длина откатов с GG — **от 5 минут**.
-• Любое нарушение условий подачи откатов — скорее всего будет причиной **отказа** без исключений.
-
-⚠️ После подачи заявки **следите за ЛС** или за запросами на общение в Discord. На обзвон рекрут позовёт вас **только в Discord Darkness** — ни в ЛС, ни в другой сервер.
-
-В случае игнорирования рекрута в ЛС после принятия заявки — заявка будет **автоматически отклонена**, и вам нужно будет заново её оформлять.
-Если вам отказали — накладывается **КД 2 недели** для повторной заявки.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**СЕРЬЁЗНО ОТНЕСИТЕСЬ К ШАБЛОНУ ПОДАЧИ.** Внимательно читайте и проверяйте все пункты заполнения. Сообщения в ЛС по типу «Не увидел», «Плохо прочитал», «Не понял», «Протупил» и т.д. будут рассматриваться как отказ.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**• Подать заявку**
-\u200B` // Пустой невидимый символ для фикса ширины нижней части
-                    )
-                    .setColor("#E74C3C"); // Красный цвет в тон скрина из запроса
+                    .setDescription(embedDescription)
+                    .setImage(bannerFile.url) 
+                    .setColor("#2b2d31"); 
 
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId("apply_menu")
-                        .setPlaceholder("Выберите роль для подачи заявки")
+                        .setPlaceholder("Нажмите на меня, чтобы открыть меню")
                         .addOptions(
                             { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
                             { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
@@ -733,7 +735,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 );
 
                 await channel.send({ embeds: [embed], components: [menu] });
-                await i.reply({ content: "✅ Панель отправлена", ephemeral: true });
+                await i.reply({ content: `✅ Панель успешно отправлена в канал <#${targetChannelId}> с вашим баннером!`, ephemeral: true });
                 return;
             }
 
