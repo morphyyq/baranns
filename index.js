@@ -687,20 +687,27 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "panel") {
-    const targetChannelId = "1458410655697731730";
-    const channel = await client.channels.fetch(targetChannelId).catch(() => null);
-    
-    if (!channel) {
-        return i.reply({ content: `❌ Ошибка: Канал <#${targetChannelId}> не найден или у бота нет туда доступа.`, ephemeral: true });
-    }
+                const targetChannelId = "1458410655697731730";
+                const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+                
+                if (!channel) {
+                    return i.reply({ content: `❌ Ошибка: Канал <#${targetChannelId}> не найден.`, ephemeral: true });
+                }
 
-    // Получаем прикрепленный файл (баннер)
-    const bannerFile = i.options.getAttachment("banner");
+                const bannerFile = i.options.getAttachment("banner");
 
-    // Текст описания с разделителями (*** превращаются в линии)
-    const embedDescription = `👋 **Путь в семью начинается здесь!**
+                // Используем "невидимый" цвет Discord (#2b2d31) для обоих эмбедов
+                const hexColor = "#2b2d31";
 
-• Заявки в семью принимаются только на сервере 🛡️ **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+                const embedBanner = new EmbedBuilder()
+                    .setImage(bannerFile.url)
+                    .setColor(hexColor);
+
+                const embedText = new EmbedBuilder()
+                    .setColor(hexColor)
+                    .setDescription(`👋 **Путь в семью начинается здесь!**
+
+• Заявки в семью принимаются только на сервере 🛡️ **Denver**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
 
 ***
 
@@ -719,34 +726,23 @@ client.on(Events.InteractionCreate, async (i) => {
 
 ***
 
-**• Выберите пункт в выпадающем меню:**`;
+**• Выберите пункт в выпадающем меню:**`);
 
-    // Эмбед 1: ТОЛЬКО БАННЕР (Он будет сверху и растянет сообщение в ширину)
-    const embedBanner = new EmbedBuilder()
-        .setImage(bannerFile.url)
-        .setColor("#2b2d31");
+                const menu = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("apply_menu")
+                        .setPlaceholder("Нажмите на меня, чтобы открыть меню")
+                        .addOptions(
+                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
+                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
+                        )
+                );
 
-    // Эмбед 2: ТОЛЬКО ТЕКСТ (Прикрепится снизу к первому без зазоров)
-    const embedText = new EmbedBuilder()
-        .setDescription(embedDescription)
-        .setColor("#2b2d31");
-
-    // Выпадающее меню
-    const menu = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-            .setCustomId("apply_menu")
-            .setPlaceholder("Нажмите на меня, чтобы открыть меню")
-            .addOptions(
-                { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
-                { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
-            )
-    );
-
-    // Отправляем сразу два эмбеда массивом
-    await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
-    await i.reply({ content: `✅ Панель успешно отправлена в канал <#${targetChannelId}> с баннером наверху!`, ephemeral: true });
-    return;
-}
+                // Отправляем строго в таком порядке
+                await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
+                await i.reply({ content: `✅ Панель отправлена.`, ephemeral: true });
+                return;
+            }
             if (i.commandName === "report_panel") {
                 const channel = await i.guild.channels.fetch("1513649382396919979").catch(() => null);
                 if (!channel) {
