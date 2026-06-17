@@ -845,7 +845,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 await i.reply({ content: "✅ Панель сборов отправлена!", ephemeral: true });
                 return;
             }
-        }
 
         if (i.isButton() && i.customId.startsWith("view_archive_app_")) {
             const tId = i.customId.replace("view_archive_app_", "");
