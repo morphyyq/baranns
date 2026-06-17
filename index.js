@@ -355,14 +355,7 @@ client.once(Events.ClientReady, async () => {
                 .setDescription("Текст, который будет отправлен в ЛС")
                 .setRequired(true)
             ),
-        new SlashCommandBuilder()
-            .setName("panel")
-            .setDescription("Отправить panel для подачи заявок")
-            .addAttachmentOption(opt => 
-                opt.setName("banner")
-                   .setDescription("Загрузите картинку/баннер для панели")
-                   .setRequired(true)
-            ),
+        new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
         new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
@@ -583,7 +576,7 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "all") {
-                const textMsg = i.options.getString("message"); 
+                const textMsg = i.options.getString("text"); 
                 
                 await i.reply({ content: "⏳ Начинаю рассылку в ЛС (может занять время)...", ephemeral: true });
 
@@ -686,27 +679,33 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            // Используйте этот код для замены старого блока
-if (i.commandName === "panel") {
-    const targetChannelId = "1458410655697731730";
-    const channel = await client.channels.fetch(targetChannelId).catch(() => null);
-    
-    if (!channel) return i.reply({ content: "Ошибка: канал не найден.", ephemeral: true });
+            if (i.commandName === "panel") {
+                // Запрашиваем картинку
+                await i.reply({ content: "⏳ Пожалуйста, отправьте картинку (баннер) для панели следующим сообщением в этот канал. У вас есть 60 секунд.", ephemeral: true });
 
-    const bannerFile = i.options.getAttachment("banner");
-    const hexColor = "#2b2d31";
+                // Создаем коллектор сообщений, который ждет сообщение с вложением от того же юзера
+                const filter = m => m.author.id === i.user.id && m.attachments.size > 0;
+                const collector = i.channel.createMessageCollector({ filter, time: 60000, max: 1 });
 
-    const embedBanner = new EmbedBuilder()
-        .setImage(bannerFile.url)
-        .setColor(hexColor);
+                collector.on("collect", async (m) => {
+                    const attachment = m.attachments.first();
+                    const imageUrl = attachment.url;
 
-    // Текст с правильными форматами эмодзи
-    const embedText = new EmbedBuilder()
-        .setColor(hexColor)
-        .setDescription(`## <a:hello:1506315095335243849> Путь в семью начинается здесь!
+                    // Получаем указанный канал по ID
+                    const targetChannel = await client.channels.fetch("1458410655697731730").catch(() => null);
+                    if (!targetChannel) {
+                        return i.followUp({ content: "❌ Не удалось найти канал заявок (1458410655697731730).", ephemeral: true });
+                    }
 
--# <a:df:1506315338625585263> Заявки в семью принимаются только на сервере <:memphisLogo:1515984688643047494> **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
--# <a:df:1506315338625585263> **Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты** — заявка будет **отклонена**.
+                    // Формируем минималистичный широкий эмбед под цвет дискорда, как на скрине
+                    const embed = new EmbedBuilder()
+                        .setColor("#2b2d31")
+                        .setImage(imageUrl)
+                        .setDescription(
+`## <a:hello:1506315095335243849> Путь в семью начинается здесь!
+
+-# <a:df:1506315338625585263> Заявки в семью принимаются только на сервере <:memphisLogo:1515984688643047494> **Denver**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+<a:df:1506315338625585263>**Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты** — заявка будет **отклонена**.
 
 **・Срок рассмотрения заявки:** от 1 до 5 дней.
 **・Важно:** если у вас нет подходящих откатов — заявка будет **отклонена**.
@@ -717,22 +716,35 @@ if (i.commandName === "panel") {
 <a:df:1506315338625585263> Откаты должны быть не в виде мувика/нарезки.
 <a:df:1506315338625585263> Откаты должны быть с сайги и со спешика (минимум 2 отката).
 <a:df:1506315338625585263> Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
+**・Выберите пункт в выпадающем меню:**`
+                        );
 
-**・Выберите пункт в выпадающем меню:**`);
+                    const menu = new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId("apply_menu")
+                            .setPlaceholder("Нажмите на меня, чтобы открыть меню")
+                            .addOptions(
+                                { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
+                                { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
+                            )
+                    );
 
-    const menu = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-            .setCustomId("apply_menu")
-            .setPlaceholder("Нажмите на меня, чтобы открыть меню")
-            .addOptions(
-                { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
-                { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
-            )
-    );
+                    // Отправляем готовую панель
+                    await targetChannel.send({ embeds: [embed], components: [menu] });
+                    
+                    // Удаляем сообщение с картинкой, чтобы не засорять канал, и отчитываемся
+                    try { await m.delete(); } catch(e) {} 
+                    await i.followUp({ content: "✅ Панель с картинкой успешно создана и отправлена!", ephemeral: true });
+                });
 
-    await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
-    await i.reply({ content: "✅ Панель отправлена.", ephemeral: true });
-}
+                collector.on("end", collected => {
+                    if (collected.size === 0) {
+                        i.followUp({ content: "❌ Время ожидания картинки вышло. Попробуйте прописать команду заново.", ephemeral: true });
+                    }
+                });
+
+                return;
+            }
 
                 const embed = new EmbedBuilder()
                     .setTitle("🔮 СИСТЕМА ПОВЫШЕНИЯ | DARKNESS FAMQ")
