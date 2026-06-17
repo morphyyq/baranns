@@ -696,18 +696,13 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 const bannerFile = i.options.getAttachment("banner");
 
-                // Используем "невидимый" цвет Discord (#2b2d31) для обоих эмбедов
-                const hexColor = "#2b2d31";
-
-                const embedBanner = new EmbedBuilder()
-                    .setImage(bannerFile.url)
-                    .setColor(hexColor);
-
-                const embedText = new EmbedBuilder()
-                    .setColor(hexColor)
+                // ОДИН ЭМБЕД: Картинка будет сверху, текст — под ней
+                const embed = new EmbedBuilder()
+                    .setImage(bannerFile.url) // Discord сам поставит картинку первой
+                    .setColor("#2b2d31")
                     .setDescription(`👋 **Путь в семью начинается здесь!**
 
-• Заявки в семью принимаются только на сервере 🛡️ **Denver**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+• Заявки в семью принимаются только на сервере 🛡️ **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
 
 ***
 
@@ -738,8 +733,8 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // Отправляем строго в таком порядке
-                await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
+                // Отправляем ОДИН эмбед
+                await channel.send({ embeds: [embed], components: [menu] });
                 await i.reply({ content: `✅ Панель отправлена.`, ephemeral: true });
                 return;
             }
