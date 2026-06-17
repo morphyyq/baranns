@@ -687,16 +687,18 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "panel") {
-                const targetChannelId = "1458410655697731730";
-                const channel = await client.channels.fetch(targetChannelId).catch(() => null);
-                
-                if (!channel) {
-                    return i.reply({ content: `❌ Ошибка: Канал <#${targetChannelId}> не найден или у бота нет туда доступа.`, ephemeral: true });
-                }
+    const targetChannelId = "1458410655697731730";
+    const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+    
+    if (!channel) {
+        return i.reply({ content: `❌ Ошибка: Канал <#${targetChannelId}> не найден или у бота нет туда доступа.`, ephemeral: true });
+    }
 
-                const bannerFile = i.options.getAttachment("banner");
+    // Получаем прикрепленный файл (баннер)
+    const bannerFile = i.options.getAttachment("banner");
 
-                const embedDescription = `👋 **Путь в семью начинается здесь!**
+    // Текст описания с разделителями (*** превращаются в линии)
+    const embedDescription = `👋 **Путь в семью начинается здесь!**
 
 • Заявки в семью принимаются только на сервере 🛡️ **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
 
@@ -719,26 +721,32 @@ client.on(Events.InteractionCreate, async (i) => {
 
 **• Выберите пункт в выпадающем меню:**`;
 
-                const embed = new EmbedBuilder()
-                    .setDescription(embedDescription)
-                    .setImage(bannerFile.url) 
-                    .setColor("#2b2d31"); 
+    // Эмбед 1: ТОЛЬКО БАННЕР (Он будет сверху и растянет сообщение в ширину)
+    const embedBanner = new EmbedBuilder()
+        .setImage(bannerFile.url)
+        .setColor("#2b2d31");
 
-                const menu = new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("apply_menu")
-                        .setPlaceholder("Нажмите на меня, чтобы открыть меню")
-                        .addOptions(
-                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
-                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
-                        )
-                );
+    // Эмбед 2: ТОЛЬКО ТЕКСТ (Прикрепится снизу к первому без зазоров)
+    const embedText = new EmbedBuilder()
+        .setDescription(embedDescription)
+        .setColor("#2b2d31");
 
-                await channel.send({ embeds: [embed], components: [menu] });
-                await i.reply({ content: `✅ Панель успешно отправлена в канал <#${targetChannelId}> с вашим баннером!`, ephemeral: true });
-                return;
-            }
+    // Выпадающее меню
+    const menu = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId("apply_menu")
+            .setPlaceholder("Нажмите на меня, чтобы открыть меню")
+            .addOptions(
+                { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
+                { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
+            )
+    );
 
+    // Отправляем сразу два эмбеда массивом
+    await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
+    await i.reply({ content: `✅ Панель успешно отправлена в канал <#${targetChannelId}> с баннером наверху!`, ephemeral: true });
+    return;
+}
             if (i.commandName === "report_panel") {
                 const channel = await i.guild.channels.fetch("1513649382396919979").catch(() => null);
                 if (!channel) {
