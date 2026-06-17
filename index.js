@@ -686,21 +686,21 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            if (i.commandName === "panel") {
+            // Используйте этот код для замены старого блока
+if (i.commandName === "panel") {
     const targetChannelId = "1458410655697731730";
     const channel = await client.channels.fetch(targetChannelId).catch(() => null);
     
     if (!channel) return i.reply({ content: "Ошибка: канал не найден.", ephemeral: true });
 
     const bannerFile = i.options.getAttachment("banner");
-    const hexColor = "#2b2d31"; // Цвет фона Discord
+    const hexColor = "#2b2d31";
 
-    // Первый эмбед: только картинка (задает ширину)
     const embedBanner = new EmbedBuilder()
         .setImage(bannerFile.url)
         .setColor(hexColor);
 
-    // Второй эмбед: весь ваш текст с разметкой
+    // Текст с правильными форматами эмодзи
     const embedText = new EmbedBuilder()
         .setColor(hexColor)
         .setDescription(`## <a:hello:1506315095335243849> Путь в семью начинается здесь!
@@ -733,12 +733,6 @@ client.on(Events.InteractionCreate, async (i) => {
     await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
     await i.reply({ content: "✅ Панель отправлена.", ephemeral: true });
 }
-            if (i.commandName === "report_panel") {
-                const channel = await i.guild.channels.fetch("1513649382396919979").catch(() => null);
-                if (!channel) {
-                    await i.reply({ content: "❌ Ошибка: целевой канал отчетов не найден.", ephemeral: true });
-                    return;
-                }
 
                 const embed = new EmbedBuilder()
                     .setTitle("🔮 СИСТЕМА ПОВЫШЕНИЯ | DARKNESS FAMQ")
