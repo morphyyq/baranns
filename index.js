@@ -680,10 +680,8 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "panel") {
-                // Запрашиваем картинку
                 await i.reply({ content: "⏳ Пожалуйста, отправьте картинку (баннер) для панели следующим сообщением в этот канал. У вас есть 60 секунд.", ephemeral: true });
 
-                // Создаем коллектор сообщений, который ждет сообщение с вложением от того же юзера
                 const filter = m => m.author.id === i.user.id && m.attachments.size > 0;
                 const collector = i.channel.createMessageCollector({ filter, time: 60000, max: 1 });
 
@@ -691,20 +689,18 @@ client.on(Events.InteractionCreate, async (i) => {
                     const attachment = m.attachments.first();
                     const imageUrl = attachment.url;
 
-                    // Получаем указанный канал по ID
                     const targetChannel = await client.channels.fetch("1458410655697731730").catch(() => null);
                     if (!targetChannel) {
                         return i.followUp({ content: "❌ Не удалось найти канал заявок (1458410655697731730).", ephemeral: true });
                     }
 
-                    // Формируем минималистичный широкий эмбед под цвет дискорда, как на скрине
                     const embed = new EmbedBuilder()
                         .setColor("#2b2d31")
                         .setImage(imageUrl)
                         .setDescription(
 `## <a:hello:1506315095335243849> Путь в семью начинается здесь!
 
--# <a:df:1506315338625585263> Заявки в семью принимаются только на сервере <:memphisLogo:1515984688643047494> **Denver**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+-# <a:df:1506315338625585263> Заявки в семью принимаются только на сервере <:memphisLogo:1515984688643047494> **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
 <a:df:1506315338625585263>**Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты** — заявка будет **отклонена**.
 
 **・Срок рассмотрения заявки:** от 1 до 5 дней.
@@ -729,10 +725,8 @@ client.on(Events.InteractionCreate, async (i) => {
                             )
                     );
 
-                    // Отправляем готовую панель
                     await targetChannel.send({ embeds: [embed], components: [menu] });
                     
-                    // Удаляем сообщение с картинкой, чтобы не засорять канал, и отчитываемся
                     try { await m.delete(); } catch(e) {} 
                     await i.followUp({ content: "✅ Панель с картинкой успешно создана и отправлена!", ephemeral: true });
                 });
@@ -745,6 +739,13 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 return;
             }
+
+            if (i.commandName === "report_panel") {
+                const channel = await i.guild.channels.fetch("1513649382396919979").catch(() => null);
+                if (!channel) {
+                    await i.reply({ content: "❌ Ошибка: целевой канал отчетов не найден.", ephemeral: true });
+                    return;
+                }
 
                 const embed = new EmbedBuilder()
                     .setTitle("🔮 СИСТЕМА ПОВЫШЕНИЯ | DARKNESS FAMQ")
