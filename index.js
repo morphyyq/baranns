@@ -696,11 +696,16 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
                 
-                // Получаем картинку, которую прикрепил пользователь при вводе команды /panel
+                // 1. Получаем вложение
                 const attachment = i.options.getAttachment("image");
+                
+                // 2. Создаем объект AttachmentBuilder
+                const file = new AttachmentBuilder(attachment.url, { name: "banner.png" });
                 
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
+                    // 3. Указываем, что картинка берется из прикрепленного файла
+                    .setImage("attachment://banner.png") 
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -729,14 +734,14 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // 1. Отправляем в канал картинку, которую загрузил пользователь
-                await channel.send({ files: [attachment.url] });
+                // 4. Отправляем всё одним сообщением (файлы + эмбед + компоненты)
+                await channel.send({ 
+                    embeds: [embed], 
+                    files: [file], 
+                    components: [menu] 
+                });
 
-                // 2. Сразу под ней отправляем сам эмбед с меню
-                await channel.send({ embeds: [embed], components: [menu] });
-
-                // Уведомляем админа, что все прошло успешно
-                await i.reply({ content: "✅ Панель успешно создана и отправлена с вашей картинкой!", ephemeral: true });
+                await i.reply({ content: "✅ Панель успешно создана!", ephemeral: true });
                 return;
             }
 
