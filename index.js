@@ -355,7 +355,17 @@ client.once(Events.ClientReady, async () => {
                 .setDescription("Текст, который будет отправлен в ЛС")
                 .setRequired(true)
             ),
-        new SlashCommandBuilder().setName("panel").setDescription("Отправить panel для подачи заявок"),
+        
+        // --- ОБНОВЛЕННАЯ КОМАНДА /panel ---
+        new SlashCommandBuilder()
+            .setName("panel")
+            .setDescription("Отправить panel для подачи заявок")
+            .addAttachmentOption(opt => 
+                opt.setName("image")
+                .setDescription("Прикрепите картинку для баннера панели")
+                .setRequired(true)
+            ),
+
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
         new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
@@ -680,11 +690,14 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             // =====================================================
-            // ОБНОВЛЕННАЯ ПАНЕЛЬ С КАРТИНКОЙ 
+            // ОБНОВЛЕННАЯ ПАНЕЛЬ С ЗАГРУЗКОЙ КАРТИНКИ
             // =====================================================
             if (i.commandName === "panel") {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
+                
+                // Получаем картинку, которую прикрепил пользователь при вводе команды /panel
+                const attachment = i.options.getAttachment("image");
                 
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
@@ -716,14 +729,14 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // 1. Отправляем картинку-баннер
-                await channel.send({ files: ["https://i.imgur.com/7HnLq2z.png"] });
+                // 1. Отправляем в канал картинку, которую загрузил пользователь
+                await channel.send({ files: [attachment.url] });
 
-                // 2. Отправляем сам эмбед с меню
+                // 2. Сразу под ней отправляем сам эмбед с меню
                 await channel.send({ embeds: [embed], components: [menu] });
 
-                // Завершаем взаимодействие (уведомляем пользователя)
-                await i.reply({ content: "✅ Панель успешно создана и отправлена!", ephemeral: true });
+                // Уведомляем админа, что все прошло успешно
+                await i.reply({ content: "✅ Панель успешно создана и отправлена с вашей картинкой!", ephemeral: true });
                 return;
             }
 
