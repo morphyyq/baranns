@@ -695,14 +695,19 @@ client.on(Events.InteractionCreate, async (i) => {
                 }
 
                 const bannerFile = i.options.getAttachment("banner");
+                const hexColor = "#2b2d31"; // Цвет фона Discord, чтобы убрать рамки
 
-                // ОДИН ЭМБЕД: Картинка будет сверху, текст — под ней
-                const embed = new EmbedBuilder()
-                    .setImage(bannerFile.url) // Discord сам поставит картинку первой
-                    .setColor("#2b2d31")
+                // Эмбед 1: ТОЛЬКО КАРТИНКА (она задает ширину 1:1)
+                const embedBanner = new EmbedBuilder()
+                    .setImage(bannerFile.url)
+                    .setColor(hexColor);
+
+                // Эмбед 2: ТОЛЬКО ТЕКСТ (идет сразу под картинкой)
+                const embedText = new EmbedBuilder()
+                    .setColor(hexColor)
                     .setDescription(`👋 **Путь в семью начинается здесь!**
 
-• Заявки в семью принимаются только на сервере 🛡️ **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+• Заявки в семью принимаются только на сервере 🛡️ **Memph**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
 
 ***
 
@@ -733,9 +738,9 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // Отправляем ОДИН эмбед
-                await channel.send({ embeds: [embed], components: [menu] });
-                await i.reply({ content: `✅ Панель отправлена.`, ephemeral: true });
+                // Отправляем массив [баннер, текст]
+                await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
+                await i.reply({ content: `✅ Панель успешно отправлена!`, ephemeral: true });
                 return;
             }
             if (i.commandName === "report_panel") {
