@@ -715,7 +715,8 @@ const embed = new EmbedBuilder()
 **・Выберите пункт в выпадающем меню:**`
     );
 
-await interaction.channel.send({ embeds: [embed], components: [row] }); // row — твоё выпадающее меню
+wait i.channel.send({ files: ["https://i.imgur.com/7HnLq2z.png"] });
+await i.channel.send({ embeds: [embed], components: [menu] });
                     const menu = new ActionRowBuilder().addComponents(
                         new StringSelectMenuBuilder()
                             .setCustomId("apply_menu")
