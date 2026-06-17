@@ -687,62 +687,52 @@ client.on(Events.InteractionCreate, async (i) => {
             }
 
             if (i.commandName === "panel") {
-                const targetChannelId = "1458410655697731730";
-                const channel = await client.channels.fetch(targetChannelId).catch(() => null);
-                
-                if (!channel) {
-                    return i.reply({ content: `❌ Ошибка: Канал <#${targetChannelId}> не найден.`, ephemeral: true });
-                }
+    const targetChannelId = "1458410655697731730";
+    const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+    
+    if (!channel) return i.reply({ content: "Ошибка: канал не найден.", ephemeral: true });
 
-                const bannerFile = i.options.getAttachment("banner");
-                const hexColor = "#2b2d31"; // Цвет фона Discord, чтобы убрать рамки
+    const bannerFile = i.options.getAttachment("banner");
+    const hexColor = "#2b2d31"; // Цвет фона Discord
 
-                // Эмбед 1: ТОЛЬКО КАРТИНКА (она задает ширину 1:1)
-                const embedBanner = new EmbedBuilder()
-                    .setImage(bannerFile.url)
-                    .setColor(hexColor);
+    // Первый эмбед: только картинка (задает ширину)
+    const embedBanner = new EmbedBuilder()
+        .setImage(bannerFile.url)
+        .setColor(hexColor);
 
-                // Эмбед 2: ТОЛЬКО ТЕКСТ (идет сразу под картинкой)
-                const embedText = new EmbedBuilder()
-                    .setColor(hexColor)
-                    .setDescription(`👋 **Путь в семью начинается здесь!**
+    // Второй эмбед: весь ваш текст с разметкой
+    const embedText = new EmbedBuilder()
+        .setColor(hexColor)
+        .setDescription(`## <a:hello:1506315095335243849> Путь в семью начинается здесь!
 
-• Заявки в семью принимаются только на сервере 🛡️ **Memph**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+-# <a:df:1506315338625585263> Заявки в семью принимаются только на сервере <:memphisLogo:1515984688643047494> **Memphis**. Уведомление о приглашении на обзвон отправляется в ЛС и в канал.
+-# <a:df:1506315338625585263> **Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты** — заявка будет **отклонена**.
 
-***
+**・Срок рассмотрения заявки:** от 1 до 5 дней.
+**・Важно:** если у вас нет подходящих откатов — заявка будет **отклонена**.
 
-• **Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты — заявка будет отклонена.**
+### - Дополнительные правила к подаче заявки:
+<a:df:1506315338625585263> Откаты с GG — не более 1 недели назад (не менее 6 минут).
+<a:df:1506315338625585263> Откаты с МП (ВЗЗ, MCL, Capt) — не более 60 дней назад. — **__при наличии!__**
+<a:df:1506315338625585263> Откаты должны быть не в виде мувика/нарезки.
+<a:df:1506315338625585263> Откаты должны быть с сайги и со спешика (минимум 2 отката).
+<a:df:1506315338625585263> Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
 
-• **Срок рассмотрения заявки:** от 1 до 5 дней.
-• **Важно:** если у вас нет подходящих откатов — заявка будет **отклонена**.
+**・Выберите пункт в выпадающем меню:**`);
 
-**• Дополнительные правила к подаче заявки:**
+    const menu = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId("apply_menu")
+            .setPlaceholder("Нажмите на меня, чтобы открыть меню")
+            .addOptions(
+                { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
+                { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
+            )
+    );
 
-⠀• Откаты с GG — не более 1 недели назад (не менее 6 минут).
-⠀• Откаты с МП (ВЗЗ, MCL, Capt) — не более 60 дней назад. **— при наличии!**
-⠀• Откаты должны быть не в виде мувика/нарезки.
-⠀• Откаты должны быть с сайги и со спешика (минимум 2 отката).
-⠀• Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
-
-***
-
-**• Выберите пункт в выпадающем меню:**`);
-
-                const menu = new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("apply_menu")
-                        .setPlaceholder("Нажмите на меня, чтобы открыть меню")
-                        .addOptions(
-                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
-                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
-                        )
-                );
-
-                // Отправляем массив [баннер, текст]
-                await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
-                await i.reply({ content: `✅ Панель успешно отправлена!`, ephemeral: true });
-                return;
-            }
+    await channel.send({ embeds: [embedBanner, embedText], components: [menu] });
+    await i.reply({ content: "✅ Панель отправлена.", ephemeral: true });
+}
             if (i.commandName === "report_panel") {
                 const channel = await i.guild.channels.fetch("1513649382396919979").catch(() => null);
                 if (!channel) {
