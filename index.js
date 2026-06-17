@@ -679,25 +679,16 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
+            // =====================================================
+            // ОБНОВЛЕННАЯ ПАНЕЛЬ С КАРТИНКОЙ 
+            // =====================================================
             if (i.commandName === "panel") {
-                await i.reply({ content: "⏳ Пожалуйста, отправьте картинку (баннер) для панели следующим сообщением в этот канал. У вас есть 60 секунд.", ephemeral: true });
-
-                const filter = m => m.author.id === i.user.id && m.attachments.size > 0;
-                const collector = i.channel.createMessageCollector({ filter, time: 60000, max: 1 });
-
-                collector.on("collect", async (m) => {
-                    const attachment = m.attachments.first();
-                    const imageUrl = attachment.url;
-
-                    const targetChannel = await client.channels.fetch("1458410655697731730").catch(() => null);
-                    if (!targetChannel) {
-                        return i.followUp({ content: "❌ Не удалось найти канал заявок (1458410655697731730).", ephemeral: true });
-                    }
-
-                   // Используй этот формат с новыми ID для отображения:
-const embed = new EmbedBuilder()
-    .setColor("#2b2d31")
-    .setDescription(
+                if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
+                const channel = await client.channels.fetch(config.CHANNELS.PANEL);
+                
+                const embed = new EmbedBuilder()
+                    .setColor("#2b2d31")
+                    .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
 -# <:df:1516907994552602634> Заявки в семью принимаются только на сервере **Denver**. 
@@ -713,33 +704,26 @@ const embed = new EmbedBuilder()
 <:df:1516907994552602634> Откаты должны быть с сайги и со спешика (минимум 2 отката).
 <:df:1516907994552602634> Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
 **・Выберите пункт в выпадающем меню:**`
-    );
-
-await i.channel.send({ files: ["https://i.imgur.com/7HnLq2z.png"] });
-await i.channel.send({ embeds: [embed], components: [menu] });
-                    const menu = new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder()
-                            .setCustomId("apply_menu")
-                            .setPlaceholder("Нажмите на меня, чтобы открыть меню")
-                            .addOptions(
-                                { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
-                                { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
-                            )
                     );
 
-                    await targetChannel.send({ files: ["https://i.imgur.com/7HnLq2z.png"] }); // Отправляет баннер
-await targetChannel.send({ embeds: [embed], components: [menu] }); // Отправляет панель сразу под ним[cite: 1]
-                    
-                    try { await m.delete(); } catch(e) {} 
-                    await i.followUp({ content: "✅ Панель с картинкой успешно создана и отправлена!", ephemeral: true });
-                });
+                const menu = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("apply_menu")
+                        .setPlaceholder("Нажмите на меня, чтобы открыть меню")
+                        .addOptions(
+                            { label: "Academy", description: "Ник, статик, имя/возраст, онлайн, семья", value: "academy" },
+                            { label: "Capture", description: "Ник, статик, имя/возраст, онлайн, семья, откаты", value: "capture" }
+                        )
+                );
 
-                collector.on("end", collected => {
-                    if (collected.size === 0) {
-                        i.followUp({ content: "❌ Время ожидания картинки вышло. Попробуйте прописать команду заново.", ephemeral: true });
-                    }
-                });
+                // 1. Отправляем картинку-баннер
+                await channel.send({ files: ["https://i.imgur.com/7HnLq2z.png"] });
 
+                // 2. Отправляем сам эмбед с меню
+                await channel.send({ embeds: [embed], components: [menu] });
+
+                // Завершаем взаимодействие (уведомляем пользователя)
+                await i.reply({ content: "✅ Панель успешно создана и отправлена!", ephemeral: true });
                 return;
             }
 
