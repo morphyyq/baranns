@@ -736,7 +736,6 @@ client.on(Events.InteractionCreate, async (i) => {
                 await i.reply({ content: "✅ Панель успешно создана (без баннера)!", ephemeral: true });
                 return;
             }
-
                 const embed = new EmbedBuilder()
                     .setTitle("🔮 СИСТЕМА ПОВЫШЕНИЯ | DARKNESS FAMQ")
                     .setDescription(
