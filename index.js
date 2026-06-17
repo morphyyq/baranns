@@ -697,12 +697,10 @@ client.on(Events.InteractionCreate, async (i) => {
                    // Используй этот формат с новыми ID для отображения:
 const embed = new EmbedBuilder()
     .setColor("#2b2d31")
-    // Используй setThumbnail, чтобы картинка была вверху справа
-    .setThumbnail(imageUrl) 
     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
--# <:df:1516907994552602634> Заявки в семью принимаются только на сервере **Denver**.
+-# <:df:1516907994552602634> Заявки в семью принимаются только на сервере **Denver**. 
 <:df:1516907994552602634> **Внимательно прочитайте все пункты** при подаче заявки. **Если не ответили на все пункты** — заявка будет **отклонена**.
 
 **・Срок рассмотрения заявки:** от 1 до 5 дней.
@@ -716,6 +714,8 @@ const embed = new EmbedBuilder()
 <:df:1516907994552602634> Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
 **・Выберите пункт в выпадающем меню:**`
     );
+
+await interaction.channel.send({ embeds: [embed], components: [row] }); // row — твоё выпадающее меню
                     const menu = new ActionRowBuilder().addComponents(
                         new StringSelectMenuBuilder()
                             .setCustomId("apply_menu")
@@ -726,7 +726,8 @@ const embed = new EmbedBuilder()
                             )
                     );
 
-                    await targetChannel.send({ embeds: [embed], components: [menu] });
+                    await targetChannel.send({ files: ["https://i.imgur.com/7HnLq2z.png"] }); // Отправляет баннер
+await targetChannel.send({ embeds: [embed], components: [menu] }); // Отправляет панель сразу под ним[cite: 1]
                     
                     try { await m.delete(); } catch(e) {} 
                     await i.followUp({ content: "✅ Панель с картинкой успешно создана и отправлена!", ephemeral: true });
