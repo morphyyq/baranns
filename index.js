@@ -720,14 +720,10 @@ client.on(Events.InteractionCreate, async (i) => {
 **・Выберите пункт в выпадающем меню:**`
                     );
 
-                // Первый embed — только баннер (картинка сверху)
-                const bannerEmbed = new EmbedBuilder().setColor("#2b2d31");
+                // Если баннер прикреплён — ставим его в embed (отображается снизу, как у VEX)
                 if (bannerUrl) {
-                    bannerEmbed.setImage(bannerUrl);
+                    embed.setImage(bannerUrl);
                 }
-
-                // embed уже содержит текст, просто убираем из него setImage
-                const embedsToSend = bannerUrl ? [bannerEmbed, embed] : [embed];
 
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
@@ -739,15 +735,14 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // Отправляем: если есть баннер — [баннер, текст], иначе просто [текст]
                 await channel.send({ 
-                    embeds: embedsToSend, 
+                    embeds: [embed], 
                     components: [menu] 
                 });
 
                 await i.reply({ 
                     content: bannerUrl 
-                        ? "✅ Панель успешно создана с баннером сверху!" 
+                        ? "✅ Панель успешно создана с баннером!" 
                         : "✅ Панель успешно создана (без баннера)!", 
                     ephemeral: true 
                 });
