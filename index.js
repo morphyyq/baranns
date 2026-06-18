@@ -720,11 +720,6 @@ client.on(Events.InteractionCreate, async (i) => {
 **・Выберите пункт в выпадающем меню:**`
                     );
 
-                // attachment://banner.png — рендерится внутри embed сверху текста
-                if (bannerUrl) {
-                    embed.setImage("attachment://banner.png");
-                }
-
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId("apply_menu")
@@ -735,13 +730,24 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                const sendOptions = { embeds: [embed], components: [menu] };
                 if (bannerUrl) {
-                    const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
-                    sendOptions.files = [bannerFile];
-                }
+                    // Два embed одного цвета — визуально сливаются в один блок.
+                    // Первый: только картинка (баннер сверху).
+                    // Второй: только текст (под баннером).
+                    const bannerEmbed = new EmbedBuilder()
+                        .setColor("#2b2d31")
+                        .setImage("attachment://banner.png");
 
-                await channel.send(sendOptions);
+                    const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
+
+                    await channel.send({
+                        files: [bannerFile],
+                        embeds: [bannerEmbed, embed],
+                        components: [menu]
+                    });
+                } else {
+                    await channel.send({ embeds: [embed], components: [menu] });
+                }
 
                 await i.reply({ 
                     content: bannerUrl 
