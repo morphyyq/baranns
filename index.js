@@ -699,9 +699,16 @@ client.on(Events.InteractionCreate, async (i) => {
                 // Получаем прикреплённое изображение из слэш-команды
                 const attachment = i.options.getAttachment("image");
 
+                // Баннер СВЕРХУ — отдельный embed только с картинкой
+                if (attachment) {
+                    const bannerEmbed = new EmbedBuilder()
+                        .setColor("#2b2d31")
+                        .setImage(attachment.url);
+                    await channel.send({ embeds: [bannerEmbed] });
+                }
+
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
-                    .setImage(attachment ? attachment.url : null)
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -735,7 +742,7 @@ client.on(Events.InteractionCreate, async (i) => {
                     components: [menu] 
                 });
 
-                await i.reply({ content: "✅ Панель успешно создана с баннером!", ephemeral: true });
+                await i.reply({ content: "✅ Панель успешно создана с баннером сверху!", ephemeral: true });
                 return;
             }
                 const embed = new EmbedBuilder()
