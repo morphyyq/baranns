@@ -695,18 +695,10 @@ client.on(Events.InteractionCreate, async (i) => {
             if (i.commandName === "panel") {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
-
-                // Получаем прикреплённое изображение из слэш-команды
-                const attachment = i.options.getAttachment("image");
-
-                // Два embed в одном .send() — Discord рендерит их вплотную без разрыва,
-                // выглядит как единый блок: картинка сверху, текст снизу — точно как у VEX
-                const bannerEmbed = new EmbedBuilder()
+                
+                const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
-                    .setImage(attachment ? attachment.url : null);
-
-                const textEmbed = new EmbedBuilder()
-                    .setColor("#2b2d31")
+                    // .setImage("attachment://banner.png") // Эту строку мы убрали
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -721,9 +713,9 @@ client.on(Events.InteractionCreate, async (i) => {
 <:df:1516907994552602634> Откаты с МП (ВЗЗ, MCL, Capt) — не более 60 дней назад. — **__при наличии!__**
 <:df:1516907994552602634> Откаты должны быть не в виде мувика/нарезки.
 <:df:1516907994552602634> Откаты должны быть с сайги и со спешика (минимум 2 отката).
-<:df:1516907994552602634> Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.
-**・Выберите пункт в выпадающем меню:**`
-                    );
+<:df:1516907994552602634> Подать заявку можно только при открытом наборе. Если нет доступа к подаче — набор закрыт.`
+                    )
+                    .setFooter({ text: "・Выберите пункт в выпадающем меню ниже:" });
 
                 const menu = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
@@ -735,9 +727,13 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                await channel.send({ embeds: [bannerEmbed, textEmbed], components: [menu] });
+                // Отправляем без файлов
+                await channel.send({ 
+                    embeds: [embed], 
+                    components: [menu] 
+                });
 
-                await i.reply({ content: "✅ Панель успешно создана!", ephemeral: true });
+                await i.reply({ content: "✅ Панель успешно создана (без баннера)!", ephemeral: true });
                 return;
             }
                 const embed = new EmbedBuilder()
