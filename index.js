@@ -720,9 +720,9 @@ client.on(Events.InteractionCreate, async (i) => {
 **・Выберите пункт в выпадающем меню:**`
                     );
 
-                // Если баннер прикреплён — ставим его в embed (отображается снизу, как у VEX)
+                // attachment://banner.png — рендерится внутри embed сверху текста
                 if (bannerUrl) {
-                    embed.setImage(bannerUrl);
+                    embed.setImage("attachment://banner.png");
                 }
 
                 const menu = new ActionRowBuilder().addComponents(
@@ -735,14 +735,17 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                await channel.send({ 
-                    embeds: [embed], 
-                    components: [menu] 
-                });
+                const sendOptions = { embeds: [embed], components: [menu] };
+                if (bannerUrl) {
+                    const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
+                    sendOptions.files = [bannerFile];
+                }
+
+                await channel.send(sendOptions);
 
                 await i.reply({ 
                     content: bannerUrl 
-                        ? "✅ Панель успешно создана с баннером!" 
+                        ? "✅ Панель успешно создана с баннером сверху!" 
                         : "✅ Панель успешно создана (без баннера)!", 
                     ephemeral: true 
                 });
