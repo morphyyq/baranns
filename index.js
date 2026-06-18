@@ -731,11 +731,11 @@ client.on(Events.InteractionCreate, async (i) => {
                 );
 
                 if (bannerUrl) {
-                    // Сначала картинка отдельным сообщением — Discord группирует сообщения бота
-                    // без разрыва, баннер будет сверху, embed с текстом сразу под ним
+                    // Один embed: картинка как attachment, ссылка через attachment://
+                    // setImage без description/author — картинка рендерится сверху
                     const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
-                    await channel.send({ files: [bannerFile] });
-                    await channel.send({ embeds: [embed], components: [menu] });
+                    embed.setImage("attachment://banner.png");
+                    await channel.send({ files: [bannerFile], embeds: [embed], components: [menu] });
                 } else {
                     await channel.send({ embeds: [embed], components: [menu] });
                 }
