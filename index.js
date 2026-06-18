@@ -699,11 +699,14 @@ client.on(Events.InteractionCreate, async (i) => {
                 // Получаем прикреплённое изображение из слэш-команды
                 const attachment = i.options.getAttachment("image");
 
-                // Всё в ОДНОМ embed: картинка через setImage (рендерится вверху),
-                // текст через setDescription — точно как у VEX
-                const embed = new EmbedBuilder()
+                // Два embed в одном .send() — Discord рендерит их вплотную без разрыва,
+                // выглядит как единый блок: картинка сверху, текст снизу — точно как у VEX
+                const bannerEmbed = new EmbedBuilder()
                     .setColor("#2b2d31")
-                    .setImage(attachment ? attachment.url : null)
+                    .setImage(attachment ? attachment.url : null);
+
+                const textEmbed = new EmbedBuilder()
+                    .setColor("#2b2d31")
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -732,7 +735,7 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                await channel.send({ embeds: [embed], components: [menu] });
+                await channel.send({ embeds: [bannerEmbed, textEmbed], components: [menu] });
 
                 await i.reply({ content: "✅ Панель успешно создана!", ephemeral: true });
                 return;
