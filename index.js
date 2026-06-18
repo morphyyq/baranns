@@ -699,8 +699,11 @@ client.on(Events.InteractionCreate, async (i) => {
                 // Получаем прикреплённое изображение из слэш-команды
                 const attachment = i.options.getAttachment("image");
 
+                // Всё в ОДНОМ embed: картинка через setImage (рендерится вверху),
+                // текст через setDescription — точно как у VEX
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
+                    .setImage(attachment ? attachment.url : null)
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -729,15 +732,7 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                // Баннер как файл-вложение в том же сообщении что и embed —
-                // Discord рендерит его ШИРОКИМ над текстом, точно как у VEX
-                const sendOptions = { embeds: [embed], components: [menu] };
-                if (attachment) {
-                    const bannerFile = new AttachmentBuilder(attachment.url, { name: "banner.png" });
-                    sendOptions.files = [bannerFile];
-                }
-
-                await channel.send(sendOptions);
+                await channel.send({ embeds: [embed], components: [menu] });
 
                 await i.reply({ content: "✅ Панель успешно создана!", ephemeral: true });
                 return;
