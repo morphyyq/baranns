@@ -696,12 +696,12 @@ client.on(Events.InteractionCreate, async (i) => {
                 if (!config || !config.CHANNELS || !config.CHANNELS.PANEL) return;
                 const channel = await client.channels.fetch(config.CHANNELS.PANEL);
 
-                // Получаем прикреплённое изображение из опции команды
+                // Получаем прикреплённое изображение из слэш-команды
                 const attachment = i.options.getAttachment("image");
-                const bannerUrl = attachment ? attachment.url : null;
 
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
+                    .setImage(attachment ? attachment.url : null)
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -730,22 +730,12 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                if (bannerUrl) {
-                    // Один embed: картинка как attachment, ссылка через attachment://
-                    // setImage без description/author — картинка рендерится сверху
-                    const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
-                    embed.setImage("attachment://banner.png");
-                    await channel.send({ files: [bannerFile], embeds: [embed], components: [menu] });
-                } else {
-                    await channel.send({ embeds: [embed], components: [menu] });
-                }
-
-                await i.reply({ 
-                    content: bannerUrl 
-                        ? "✅ Панель успешно создана с баннером сверху!" 
-                        : "✅ Панель успешно создана (без баннера)!", 
-                    ephemeral: true 
+                await channel.send({ 
+                    embeds: [embed], 
+                    components: [menu] 
                 });
+
+                await i.reply({ content: "✅ Панель успешно создана с баннером!", ephemeral: true });
                 return;
             }
                 const embed = new EmbedBuilder()
