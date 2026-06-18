@@ -701,7 +701,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 const bannerUrl = attachment ? attachment.url : null;
 
                 const embed = new EmbedBuilder()
-                    .setColor("#2b2d31")
+                    .setColor("#000000")
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -735,8 +735,9 @@ client.on(Events.InteractionCreate, async (i) => {
                     // Первый: только картинка (баннер сверху).
                     // Второй: только текст (под баннером).
                     const bannerEmbed = new EmbedBuilder()
-                        .setColor("#2b2d31")
-                        .setImage("attachment://banner.png");
+                        .setColor("#000000")
+                        .setImage("attachment://banner.png")
+                        .setDescription("\u200b");
 
                     const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
 
