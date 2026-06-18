@@ -701,7 +701,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 const bannerUrl = attachment ? attachment.url : null;
 
                 const embed = new EmbedBuilder()
-                    .setColor("#000000")
+                    .setColor("#2b2d31")
                     .setDescription(
 `## <:hello:1516906998715912334> Путь в семью начинается здесь!
 
@@ -731,21 +731,10 @@ client.on(Events.InteractionCreate, async (i) => {
                 );
 
                 if (bannerUrl) {
-                    // Два embed одного цвета — визуально сливаются в один блок.
-                    // Первый: только картинка (баннер сверху).
-                    // Второй: только текст (под баннером).
-                    const bannerEmbed = new EmbedBuilder()
-                        .setColor("#000000")
-                        .setImage("attachment://banner.png")
-                        .setDescription("\u200b");
-
+                    // Один embed: баннер через attachment, рендерится как широкая картинка
+                    embed.setImage("attachment://banner.png");
                     const bannerFile = new AttachmentBuilder(bannerUrl, { name: "banner.png" });
-
-                    await channel.send({
-                        files: [bannerFile],
-                        embeds: [bannerEmbed, embed],
-                        components: [menu]
-                    });
+                    await channel.send({ files: [bannerFile], embeds: [embed], components: [menu] });
                 } else {
                     await channel.send({ embeds: [embed], components: [menu] });
                 }
