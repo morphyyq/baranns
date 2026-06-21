@@ -752,33 +752,30 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 const embed = new EmbedBuilder()
                     .setColor("#2b2d31")
-                    .setTitle("🟣 Заявка в Main состав")
                     .setDescription(
-`Main состав — основа семьи Darkness. Здесь играют те, кто готов участвовать во всём контенте семьи: капты, MCL, турниры и другое.
+`**Заявка в Main состав**
 
-### Требования для подачи:
-・Откат стрельбы от 5 минут с GG
-・или откат с любой МП/капта/массового мероприятия
+Main состав — основа нашей семьи. Здесь играют люди, готовые участвовать во всём контенте семьи: капты, MCL, турниры и т.д.
 
-### Что мы ценим:
-・Адекватность и активность
-・Хорошую игру и коммуникацию
-・Желание развиваться вместе с семьёй
+**・Требования для подачи:** откаты стрельбы от 5 минут с GG, либо откаты с любой МП/капта/массового мероприятия.
 
-⚠️ **Заявки без откатов не рассматриваются.** Рассмотрение занимает 2–4 дня. Подгонять администрацию запрещено, решение по отказу — окончательное.
+**・Что мы ценим:** адекватность, активность, хорошую игру и коммуникацию, желание развиваться вместе с семьёй.
 
-Вступая в Main состав, вы становитесь частью основного комьюнити Darkness.`
+**・Важно:** заявки без откатов не рассматриваются. Рассмотрение занимает от 2 до 4 дней. Подгонять администрацию запрещено, решение по отказу окончательное.
+
+**・Выберите пункт в выпадающем меню:**`
                     );
 
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId("open_main_modal")
-                        .setLabel("Подать заявку")
-                        .setEmoji("📋")
-                        .setStyle(ButtonStyle.Primary)
+                const menu = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("main_apply_menu")
+                        .setPlaceholder("Main")
+                        .addOptions(
+                            { label: "Main", description: "Статик, откаты", value: "main" }
+                        )
                 );
 
-                await channel.send({ embeds: [embed], components: [row] });
+                await channel.send({ embeds: [embed], components: [menu] });
                 await i.reply({ content: "✅ Панель заявки в Main успешно создана!", ephemeral: true });
                 return;
             }
@@ -1273,18 +1270,15 @@ client.on(Events.InteractionCreate, async (i) => {
 
         if (!config) return;
 
-        if (i.isButton() && i.customId === "open_main_modal") {
+        if (i.isStringSelectMenu() && i.customId === "main_apply_menu") {
             const type = "main";
             const modal = new ModalBuilder()
                 .setCustomId(`apply_modal_${type}`)
                 .setTitle("Заявка в Main");
 
             const fields = [
-                { id: "q1", label: "ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ", placeholder: "21074 | Hugo Darkness", style: TextInputStyle.Short },
-                { id: "q2", label: "ИМЯ И ВОЗРАСТ (В РЕАЛЕ)", placeholder: "Женя | 20", style: TextInputStyle.Short },
-                { id: "q3", label: "ЕСТЬ У ВАС ОПЫТ В СЕМЬЯХ? ГДЕ СОСТОЯЛИ?", placeholder: "Да, был в...", style: TextInputStyle.Paragraph },
-                { id: "q4", label: "ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?", placeholder: "Увидел на респе / медиа контент...", style: TextInputStyle.Paragraph },
-                { id: "q5", label: "Предоставьте свои откаты", placeholder: "Откат стрельбы от 5 минут с GG или с МП/капта", style: TextInputStyle.Paragraph }
+                { id: "q1", label: "Ваш статик", placeholder: "21074", style: TextInputStyle.Short },
+                { id: "q5", label: "Предоставьте ваши откаты", placeholder: "Откат стрельбы от 5 минут с GG или с МП/капта", style: TextInputStyle.Paragraph }
             ];
 
             modal.addComponents(
@@ -1348,9 +1342,9 @@ client.on(Events.InteractionCreate, async (i) => {
             const data = {
                 type,
                 q1: i.fields.getTextInputValue("q1"),
-                q2: i.fields.getTextInputValue("q2"),
-                q3: i.fields.getTextInputValue("q3"),
-                q4: i.fields.getTextInputValue("q4"),
+                q2: type === "main" ? null : i.fields.getTextInputValue("q2"),
+                q3: type === "main" ? null : i.fields.getTextInputValue("q3"),
+                q4: type === "main" ? null : i.fields.getTextInputValue("q4"),
                 q5: type !== "academy" ? i.fields.getTextInputValue("q5") : null,
                 userId: i.user.id
             };
@@ -1372,7 +1366,16 @@ client.on(Events.InteractionCreate, async (i) => {
             const rolesPing = config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ") : "";
             const topContent = `${rolesPing} <@&1468704257606684712>\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
-            let embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
+            let embedDescription;
+
+            if (type === "main") {
+                embedDescription = `**Ваш статик**
+${data.q1}
+
+**Предоставьте ваши откаты**
+${data.q5}`;
+            } else {
+                embedDescription = `**ВАШ СТАТИЧЕСКИЙ ID # И ВАШ НИК НЕЙМ**
 ${data.q1}
 
 **ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
@@ -1384,8 +1387,9 @@ ${data.q3}
 **ПОЧЕМУ ВЫБРАЛИ Darkness? КАК УЗНАЛИ О НАС?**
 ${data.q4}`;
 
-            if (type !== "academy") {
-                embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
+                if (type !== "academy") {
+                    embedDescription += `\n\n**Предоставьте свои откаты**\n${data.q5}`;
+                }
             }
 
             embedDescription += `\n\n**Пользователь**\n<@${i.user.id}>`;
