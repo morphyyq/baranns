@@ -1557,16 +1557,21 @@ ${data.q4}`;
                     };
                     saveDB(salary);
 
-                    await i.channel.permissionOverwrites.edit(targetId, {
-                        ViewChannel: false,
-                        SendMessages: false
-                    }).catch(() => null);
+                    if (isMain) {
+                        embed.setColor("Purple").setTitle("Заявление (Принято)");
+                        await i.update({ embeds: [embed], components: [] });
+                    } else {
+                        await i.channel.permissionOverwrites.edit(targetId, {
+                            ViewChannel: false,
+                            SendMessages: false
+                        }).catch(() => null);
 
-                    const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "").replace("main-", "");
-                    await i.channel.setName(`closed-${cleanName}`).catch(() => null);
+                        const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "").replace("main-", "");
+                        await i.channel.setName(`closed-${cleanName}`).catch(() => null);
 
-                    embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
-                    await i.update({ embeds: [embed], components: [] });
+                        embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
+                        await i.update({ embeds: [embed], components: [] });
+                    }
 
                     const auditChannelId = config.CHANNELS.AUDIT_APP;
                     if (auditChannelId) {
@@ -1584,7 +1589,19 @@ ${data.q4}`;
                         }
                     }
 
-                    if (!isMain) {
+                    if (isMain) {
+                        await targetMember.send({
+                            content: `👋 **Привет!** Твоя заявка в **Main состав** Darkness на сервере **${i.guild.name}** была проверена.\n\n🎉 Поздравляем, кандидат успешно принят в Main состав!`
+                        }).catch(() => {
+                            i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
+                        });
+
+                        await i.channel.send({ content: `🎉 Кандидат <@${targetId}> успешно принят! Тикет будет удалён через несколько секунд.` }).catch(() => null);
+
+                        setTimeout(() => {
+                            i.channel.delete().catch(() => null);
+                        }, 5000);
+                    } else {
                         await i.channel.send({
                             content: `🎉 <@${targetId}> успешно принят!\n\n💼 <@${i.user.id}>, кандидат убран из тикета. Пожалуйста, **отправьте сюда скриншот с планшета**, чтобы зафиксировать отчет в аудите.`
                         });
