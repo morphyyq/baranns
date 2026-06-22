@@ -81,9 +81,11 @@ const SERVERS = {
             NOTIFY_PROMO: "1513660056338436206",
             REPORT_CATEGORY: "1458410646956806196",
             MAIN: "1503001219201761301",
-            MAIN_CATEGORY: "1503001195919184023",
+            MAIN_CATEGORY: "1499701418435809380",
             RECRUIT: "1499701507619291206",
-            RECRUIT_CATEGORY: "1503001195919184023"
+            RECRUIT_CATEGORY: "1499701418435809380",
+            AUDIT_MAIN: "1503377972541915357",
+            AUDIT_RECRUIT: "1507665992497496176"
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -1274,38 +1276,44 @@ Main состав — основа нашей семьи. Здесь играю�
             const targetId = i.customId.replace("app_reject_modal_", "");
             const reason = i.fields.getTextInputValue("reject_reason_input");
 
-            const logChannelId = config.CHANNELS.AUDIT_APP || "1464575195418460417";
+            const isMainCh = i.channel.name.startsWith("main");
+            const isRecruitCh = i.channel.name.startsWith("recruit");
+            const logChannelId = isMainCh
+                ? (config.CHANNELS.AUDIT_MAIN || config.CHANNELS.AUDIT_APP)
+                : isRecruitCh
+                    ? (config.CHANNELS.AUDIT_RECRUIT || config.CHANNELS.AUDIT_APP)
+                    : (config.CHANNELS.AUDIT_APP || "1464575195418460417");
             const logChannel = await i.guild.channels.fetch(logChannelId).catch(() => null);
 
             if (logChannel) {
                 let originalEmbed;
                 const messages = await i.channel.messages.fetch({ limit: 50 }).catch(() => null);
                 if (messages) {
-                    const msg = messages.find(m => m.embeds.length > 0 && m.embeds[0].description?.includes("ВАШ СТАТИЧЕСКИЙ ID"));
+                    const msg = messages.find(m => m.embeds.length > 0 && (
+                        m.embeds[0].description?.includes("ВАШ СТАТИЧЕСКИЙ ID") ||
+                        m.embeds[0].description?.includes("Ваш статик") ||
+                        m.embeds[0].description?.includes("НИК И СТАТИК") ||
+                        m.embeds[0].title?.startsWith("Заявление")
+                    ));
                     if (msg) originalEmbed = msg.embeds[0];
                 }
 
-                if (originalEmbed) {
-                    const rejectEmbed = EmbedBuilder.from(originalEmbed)
-                        .setTitle(null)
-                        .setColor("Red")
-                        .setTimestamp();
-                    
-                    rejectEmbed.addFields(
-                        { name: "Кого", value: `<@${targetId}>`, inline: true },
-                        { name: "Отклонил", value: `<@${i.user.id}>`, inline: true },
-                        { name: "Причина", value: reason, inline: true }
-                    );
-                    
-                    await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
-                } else {
-                    const rejectEmbed = new EmbedBuilder()
-                        .setTitle("❌ Отказ по заявке в тему")
-                        .setDescription(`👤 **Кандидат:** <@${targetId}>\n🔒 **Отклонил:** <@${i.user.id}>\n📝 **Причина:** ${reason}`)
-                        .setColor("Red")
-                        .setTimestamp();
-                    await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
+                const rejectEmbed = new EmbedBuilder()
+                    .setTitle(`❌ Заявка отклонена | ${isMainCh ? "Main состав" : isRecruitCh ? "Recruit" : "Семья"}`)
+                    .setColor("Red")
+                    .setTimestamp();
+
+                if (originalEmbed?.description) {
+                    rejectEmbed.setDescription(originalEmbed.description);
                 }
+
+                rejectEmbed.addFields(
+                    { name: "Кого", value: `<@${targetId}>`, inline: true },
+                    { name: "Отклонил", value: `<@${i.user.id}>`, inline: true },
+                    { name: "Причина", value: reason, inline: false }
+                );
+
+                await logChannel.send({ embeds: [rejectEmbed] }).catch(() => null);
             }
 
             await i.reply({ content: `❌ Заявка успешно отклонена. Причина зафиксирована в канале логирования.` }).catch(() => null);
@@ -1481,6 +1489,24 @@ ${data.q4}`;
 
             await channel.send({ content: topContent, embeds: [embed], components: [row] });
             await i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
+
+            // Аудит лог — новая заявка (main / capture / academy)
+            if (type === "main" && config.CHANNELS.AUDIT_MAIN) {
+                const auditCh = await i.guild.channels.fetch(config.CHANNELS.AUDIT_MAIN).catch(() => null);
+                if (auditCh) {
+                    const auditEmbed = new EmbedBuilder()
+                        .setTitle("📋 Новая заявка | Main состав")
+                        .setColor("#1f8b4c")
+                        .setDescription(`👤 **Пользователь:** <@${i.user.id}>\n🆔 **Username:** \`${i.user.username}\`\n\n**Статик:**\n${data.q1}\n\n**Откаты:**\n${data.q5}`)
+                        .addFields(
+                            { name: "Тикет", value: `<#${channel.id}>`, inline: true },
+                            { name: "ID", value: i.user.id, inline: true }
+                        )
+                        .setTimestamp();
+                    await auditCh.send({ embeds: [auditEmbed] }).catch(() => null);
+                }
+            }
+
             return;
             } // end else (not recruit)
         }
@@ -1566,6 +1592,38 @@ ${recruitData.q4}
 
             await recruitChannel.send({ content: topContent, embeds: [recruitEmbed], components: [recruitRow] });
             await i.reply({ content: `✅ Заявка в Recruit создана! Канал: <#${recruitChannel.id}>`, ephemeral: true });
+
+            // Аудит лог — новая заявка (recruit)
+            if (config.CHANNELS.AUDIT_RECRUIT) {
+                const auditCh = await i.guild.channels.fetch(config.CHANNELS.AUDIT_RECRUIT).catch(() => null);
+                if (auditCh) {
+                    const auditEmbed = new EmbedBuilder()
+                        .setTitle("📋 Новая заявка | Recruit")
+                        .setColor("#2b2d31")
+                        .setDescription(
+`👤 **Пользователь:** <@${i.user.id}>
+🆔 **Username:** \`${i.user.username}\`
+
+**Ник и статик:**
+${recruitData.q1}
+
+**Имя и возраст:**
+${recruitData.q2}
+
+**Почему хочет в Recruit:**
+${recruitData.q3}
+
+**Опыт в рекрутинге:**
+${recruitData.q4}`)
+                        .addFields(
+                            { name: "Тикет", value: `<#${recruitChannel.id}>`, inline: true },
+                            { name: "ID", value: i.user.id, inline: true }
+                        )
+                        .setTimestamp();
+                    await auditCh.send({ embeds: [auditEmbed] }).catch(() => null);
+                }
+            }
+
             return;
         }
 
@@ -1728,13 +1786,19 @@ ${recruitData.q4}
                         await i.update({ embeds: [embed], components: [] });
                     }
 
-                    const auditChannelId = config.CHANNELS.AUDIT_APP;
+                    const auditChannelId = isMain
+                        ? config.CHANNELS.AUDIT_MAIN
+                        : isRecruit
+                            ? config.CHANNELS.AUDIT_RECRUIT
+                            : config.CHANNELS.AUDIT_APP;
                     if (auditChannelId) {
                         const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
                         if (auditChannel) {
-                            const auditEmbed = EmbedBuilder.from(i.message.embeds[0])
-                                .setTitle(null)
+                            const auditLabel = isMain ? "Main состав" : isRecruit ? "Recruit" : "Семья";
+                            const auditEmbed = new EmbedBuilder()
+                                .setTitle(`✅ Заявка принята | ${auditLabel}`)
                                 .setColor("Green")
+                                .setDescription(`👤 **Кандидат:** <@${targetId}>\n✅ **Принял:** <@${i.user.id}>`)
                                 .addFields(
                                     { name: "Кого", value: `<@${targetId}>`, inline: true },
                                     { name: "Принял", value: `<@${i.user.id}>`, inline: true }
@@ -1769,12 +1833,18 @@ ${recruitData.q4}
                     embed.setColor("Yellow").setTitle("Заявление (На рассмотрении)");
                     await i.update({ embeds: [embed] });
 
-                    const auditChannelId = config.CHANNELS.AUDIT_APP;
-                    if (auditChannelId) {
-                        const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
+                    const isMainR = i.channel.name.startsWith("main");
+                    const isRecruitR = i.channel.name.startsWith("recruit");
+                    const reviewAuditId = isMainR
+                        ? config.CHANNELS.AUDIT_MAIN
+                        : isRecruitR
+                            ? config.CHANNELS.AUDIT_RECRUIT
+                            : config.CHANNELS.AUDIT_APP;
+                    if (reviewAuditId) {
+                        const auditChannel = await i.guild.channels.fetch(reviewAuditId).catch(() => null);
                         if (auditChannel) {
-                            const auditEmbed = EmbedBuilder.from(i.message.embeds[0])
-                                .setTitle(null)
+                            const auditEmbed = new EmbedBuilder()
+                                .setTitle(`⏳ Заявка на рассмотрении`)
                                 .setColor("Yellow")
                                 .addFields(
                                     { name: "Кого", value: `<@${targetId}>`, inline: true },
