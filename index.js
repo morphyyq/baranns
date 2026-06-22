@@ -1,8 +1,7 @@
 require("dotenv").config();
 process.env.LANG = "en_US.UTF-8";
 
-const fs = require("fs");
-const path = require("path");
+const { MongoClient } = require("mongodb");
 const express = require("express");
 
 // Генерируем уникальный ID для этой запущенной копии бота
@@ -127,30 +126,41 @@ const SERVERS = {
 
 
 // =====================================================
-// DATABASE
+// DATABASE (MONGODB)
 // =====================================================
-const DB_FILE = path.join(__dirname, "salary.json");
+let db;
+let salary = { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {}, auditMessages: {} };
 
-function loadDB() {
-    try {
-        const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-        if (!data.balances) data.balances = {};
-        if (!data.recruits) data.recruits = {};
-        if (!data.reports) data.reports = {};
-        if (!data.afk) data.afk = {};
-        if (!data.archive) data.archive = {};
-        if (!data.auditMessages) data.auditMessages = {};
-        return data;
-    } catch {
-        return { balances: {}, recruits: {}, reports: {}, afk: {}, archive: {}, auditMessages: {} };
+async function connectDB() {
+    const client = new MongoClient(process.env.MONGO_URI);
+    await client.connect();
+    db = client.db("darknessbot");
+    console.log(`[DB] Подключено к MongoDB`);
+
+    // Загружаем все данные из MongoDB в память при старте
+    const docs = await db.collection("salary").find({}).toArray();
+    for (const doc of docs) {
+        if (doc._id === "balances") salary.balances = doc.data || {};
+        else if (doc._id === "recruits") salary.recruits = doc.data || {};
+        else if (doc._id === "reports") salary.reports = doc.data || {};
+        else if (doc._id === "afk") salary.afk = doc.data || {};
+        else if (doc._id === "archive") salary.archive = doc.data || {};
+        else if (doc._id === "auditMessages") salary.auditMessages = doc.data || {};
     }
+    console.log(`[DB] Данные загружены из MongoDB`);
 }
 
-function saveDB(data) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+async function saveDB(data) {
+    // Сохраняем все секции параллельно
+    await Promise.all([
+        db.collection("salary").updateOne({ _id: "balances" }, { $set: { data: data.balances } }, { upsert: true }),
+        db.collection("salary").updateOne({ _id: "recruits" }, { $set: { data: data.recruits } }, { upsert: true }),
+        db.collection("salary").updateOne({ _id: "reports" }, { $set: { data: data.reports } }, { upsert: true }),
+        db.collection("salary").updateOne({ _id: "afk" }, { $set: { data: data.afk } }, { upsert: true }),
+        db.collection("salary").updateOne({ _id: "archive" }, { $set: { data: data.archive } }, { upsert: true }),
+        db.collection("salary").updateOne({ _id: "auditMessages" }, { $set: { data: data.auditMessages } }, { upsert: true }),
+    ]);
 }
-
-let salary = loadDB();
 
 
 // =====================================================
@@ -418,7 +428,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     try {
         if (salary.afk && salary.afk[member.id]) {
             delete salary.afk[member.id];
-            saveDB(salary);
+            await saveDB(salary);
             await updateAFKEmbed(member.guild);
         }
 
@@ -451,7 +461,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
             }
 
             delete salary.recruits[member.id];
-            saveDB(salary);
+            await saveDB(salary);
             await updateSalaryEmbed(member.guild);
         }
     } catch (e) {
@@ -518,7 +528,7 @@ client.on(Events.MessageCreate, async (msg) => {
                     salary.auditMessages[candidateId] = auditMsg.id; 
                 }
 
-                saveDB(salary);
+                await saveDB(salary);
                 await updateSalaryEmbed(msg.guild);
             }
 
@@ -634,7 +644,7 @@ client.on(Events.InteractionCreate, async (i) => {
                 salary.balances = {};
                 salary.recruits = {};
                 salary.auditMessages = {};
-                saveDB(salary);
+                await saveDB(salary);
                 await updateSalaryEmbed(i.guild);
                 await i.reply({ content: "✅ Все балансы и привязки игроков были полностью аннулированы!", ephemeral: true });
                 return;
@@ -956,12 +966,12 @@ Main состав — основа нашей семьи. Здесь играю�
         if (i.isButton() && (i.customId === "afk_enter" || i.customId === "afk_leave")) {
             if (i.customId === "afk_enter") {
                 salary.afk[i.user.id] = new Date().toISOString();
-                saveDB(salary);
+                await saveDB(salary);
                 await i.reply({ content: "🟢 Вы успешно перешли в статус АФК. Уведомления о сборах приостановлены.", ephemeral: true });
             } else {
                 if (salary.afk[i.user.id]) {
                     delete salary.afk[i.user.id];
-                    saveDB(salary);
+                    await saveDB(salary);
                 }
                 await i.reply({ content: "🏃 Вы вышли из режима АФК.", ephemeral: true });
             }
@@ -1059,7 +1069,7 @@ Main состав — основа нашей семьи. Здесь играю�
 
             if (action === "accept") {
                 salary.reports[targetId] = (salary.reports[targetId] || 0) + 1;
-                saveDB(salary);
+                await saveDB(salary);
 
                 await i.reply({ content: "✅ Отчет успешно зафиксирован!" });
 
@@ -1717,7 +1727,7 @@ ${recruitData.q4}
                         salary.recruits[candidateId] = recruiterId;
                     }
 
-                    saveDB(salary);
+                    await saveDB(salary);
                     await updateSalaryEmbed(i.guild);
 
                     await i.reply({ content: "✅ Отчёт успешно подтвержден! Рекрутеру начислено $10,000.", ephemeral: true });
@@ -1739,7 +1749,7 @@ ${recruitData.q4}
 
                 if (action === "accept") {
                     salary.balances[targetId] = (salary.balances[targetId] || 0) + 1000;
-                    saveDB(salary);
+                    await saveDB(salary);
                     await updateSalaryEmbed(i.guild);
                     embed.setColor("Green").setTitle("📸 Отчёт одобрен");
                     await i.update({ embeds: [embed], components: [] });
@@ -1778,7 +1788,7 @@ ${recruitData.q4}
                         timestamp: new Date().toISOString(),
                         fields: liveData || { q1: "Не сохр.", q2: "Не сохр.", q3: "Не сохр.", q4: "Не сохр." }
                     };
-                    saveDB(salary);
+                    await saveDB(salary);
 
                     if (isMain || isRecruit) {
                         embed.setColor("Purple").setTitle("Заявление (Принято)");
@@ -1910,6 +1920,47 @@ ${recruitData.q4}
 
 
 // =====================================================
+// GUILD MEMBER UPDATE — вычет когда осталась только 1 роль
+// =====================================================
+const DEDUCT_ROLE_ID = "1458410670071615580";
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+    try {
+        // Роли без @everyone до и после изменения
+        const oldRoles = oldMember.roles.cache.filter(r => r.id !== newMember.guild.id);
+        const newRoles = newMember.roles.cache.filter(r => r.id !== newMember.guild.id);
+
+        // Условие: раньше ролей было больше одной, теперь осталась ТОЛЬКО 1458410670071615580 и больше ничего
+        const wasMoreThanOne = oldRoles.size > 1;
+        const nowOnlyDeductRole = newRoles.size === 1 && newRoles.has(DEDUCT_ROLE_ID);
+
+        if (!wasMoreThanOne || !nowOnlyDeductRole) return;
+
+        // Ищем рекрута, который принял этого участника
+        const recruiterId = salary.recruits[newMember.id];
+        if (!recruiterId) return;
+
+        // Списываем 10к (не уходим в минус)
+        salary.balances[recruiterId] = Math.max(0, (salary.balances[recruiterId] || 0) - 10000);
+        await saveDB(salary);
+
+        const config = SERVERS[newMember.guild.id];
+        if (config) await updateSalaryEmbed(newMember.guild);
+
+        // Уведомление в канал зарплат
+        const salaryChannel = await newMember.guild.channels.fetch(config?.CHANNELS?.SALARY).catch(() => null);
+        if (salaryChannel) {
+            await salaryChannel.send({
+                content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — у участника <@${newMember.id}> осталась только роль <@&${DEDUCT_ROLE_ID}>.`
+            }).catch(() => null);
+        }
+    } catch (e) {
+        console.error("[MEMBER UPDATE ERROR]", e);
+    }
+});
+
+
+// =====================================================
 // SHUTDOWN
 // =====================================================
 const shutdown = () => {
@@ -1924,4 +1975,9 @@ process.on("SIGINT", shutdown);
 // =====================================================
 // LOGIN
 // =====================================================
-client.login(process.env.TOKEN);
+connectDB().then(() => {
+    client.login(process.env.TOKEN);
+}).catch(err => {
+    console.error("[DB] Ошибка подключения к MongoDB:", err);
+    process.exit(1);
+});
