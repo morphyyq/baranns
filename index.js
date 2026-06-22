@@ -528,6 +528,16 @@ client.on(Events.GuildMemberRemove, async (member) => {
             delete salary.recruits[member.id];
             await saveDB(salary);
             await updateSalaryEmbed(member.guild);
+
+            // Уведомление в канал о списании (вышел)
+            const newBal = salary.balances[recruiterId] || 0;
+            const notifyChannel = await member.guild.channels.fetch("1518544382985371698").catch(() => null);
+            if (notifyChannel) {
+                await notifyChannel.send({
+                    content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — <@${member.id}> **вышел с сервера**.
+Ваш баланс: **$${newBal.toLocaleString()}**`
+                }).catch(() => null);
+            }
         }
     } catch (e) {
         console.error("[ERROR AT MEMBER REMOVE]", e);
@@ -2034,11 +2044,13 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         const config = SERVERS[newMember.guild.id];
         if (config) await updateSalaryEmbed(newMember.guild);
 
-        // Уведомление в канал зарплат
-        const salaryChannel = await newMember.guild.channels.fetch(config?.CHANNELS?.SALARY).catch(() => null);
-        if (salaryChannel) {
-            await salaryChannel.send({
-                content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — у участника <@${newMember.id}> осталась только роль <@&${DEDUCT_ROLE_ID}>.`
+        // Уведомление в канал (осталась одна роль)
+        const newBal2 = salary.balances[recruiterId] || 0;
+        const notifyChannel2 = await newMember.guild.channels.fetch("1518544382985371698").catch(() => null);
+        if (notifyChannel2) {
+            await notifyChannel2.send({
+                content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — у <@${newMember.id}> **осталась только одна роль**.
+Ваш баланс: **$${newBal2.toLocaleString()}**`
             }).catch(() => null);
         }
     } catch (e) {
