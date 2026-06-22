@@ -81,7 +81,9 @@ const SERVERS = {
             NOTIFY_PROMO: "1513660056338436206",
             REPORT_CATEGORY: "1458410646956806196",
             MAIN: "1503001219201761301",
-            MAIN_CATEGORY: "1503001195919184023"
+            MAIN_CATEGORY: "1503001195919184023",
+            RECRUIT: "1499701507619291206",
+            RECRUIT_CATEGORY: "1503001195919184023"
         },
         ALLOWED_ROLES: [
             "1471553901433192532",
@@ -378,6 +380,7 @@ client.once(Events.ClientReady, async () => {
         new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом"),
         new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава"),
         new SlashCommandBuilder().setName("main_panel").setDescription("Отправить панель заявки в Main состав"),
+        new SlashCommandBuilder().setName("recruit_panel").setDescription("Отправить панель заявки в отдел Recruit"),
         new SlashCommandBuilder().setName("rank").setDescription("Посмотреть статистику выполненных отчетов").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя")),
         new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true))
     ].map(cmd => cmd.toJSON());
@@ -781,6 +784,44 @@ Main состав — основа нашей семьи. Здесь играю�
 
                 await channel.send({ embeds: [embed], components: [row] });
                 await i.reply({ content: "✅ Панель заявки в Main успешно создана!", ephemeral: true });
+                return;
+            }
+
+            // =====================================================
+            // ПАНЕЛЬ ЗАЯВКИ В RECRUIT ОТДЕЛ
+            // =====================================================
+            if (i.commandName === "recruit_panel") {
+                if (!config || !config.CHANNELS || !config.CHANNELS.RECRUIT) return;
+                const channel = await client.channels.fetch(config.CHANNELS.RECRUIT);
+
+                const embed = new EmbedBuilder()
+                    .setColor("#2b2d31")
+                    .setDescription(
+`## Заявки в отдел Recruit | Darkness ##
+
+**Recruit — отдел, который отвечает за набор новых игроков и развитие семьи.**
+• Поиск новых участников.
+• Помощь новичкам.
+• Продвижение семьи.
+• Поддержание актива.
+
+### Важно ###
+• Заявки оформляйте адекватно.
+• Рассмотрение заявки занимает до 4 дней.
+• Спам администрации запрещён.
+
+🚀 **Recruit — будущее семьи Darkness.**`
+                    );
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("open_recruit_modal")
+                        .setLabel("Подать заявку")
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+                await channel.send({ content: "@everyone <@&1458410756453306490>", embeds: [embed], components: [row] });
+                await i.reply({ content: "✅ Панель заявки в Recruit успешно создана!", ephemeral: true });
                 return;
             }
 
@@ -1295,6 +1336,28 @@ Main состав — основа нашей семьи. Здесь играю�
             return;
         }
 
+        if (i.isButton() && i.customId === "open_recruit_modal") {
+            const modal = new ModalBuilder()
+                .setCustomId("apply_modal_recruit")
+                .setTitle("Заявка в Recruit");
+
+            const fields = [
+                { id: "q1", label: "Ваш ник и статик", placeholder: "Hugo Darkness | 21074", style: TextInputStyle.Short },
+                { id: "q2", label: "Имя и возраст (в реале)", placeholder: "Женя | 20", style: TextInputStyle.Short },
+                { id: "q3", label: "Почему хотите попасть в Recruit?", placeholder: "Хочу помогать семье, набирать новых игроков...", style: TextInputStyle.Paragraph },
+                { id: "q4", label: "Есть ли опыт в рекрутинге или схожих ролях?", placeholder: "Да, был рекрутером в семье... / Нет, но готов учиться", style: TextInputStyle.Paragraph }
+            ];
+
+            modal.addComponents(
+                ...fields.map(f => new ActionRowBuilder().addComponents(
+                    new TextInputBuilder().setCustomId(f.id).setLabel(f.label).setPlaceholder(f.placeholder).setRequired(true).setStyle(f.style)
+                ))
+            );
+
+            await i.showModal(modal);
+            return;
+        }
+
         if (i.isStringSelectMenu() && i.customId === "apply_menu") {
             const type = i.values[0];
             const modal = new ModalBuilder()
@@ -1323,6 +1386,9 @@ Main состав — основа нашей семьи. Здесь играю�
         }
 
         if (i.isModalSubmit() && i.customId.startsWith("apply_modal_")) {
+            if (i.customId === "apply_modal_recruit") {
+                // Handled separately below
+            } else {
             if (modalLocks.has(i.user.id)) return;
             modalLocks.add(i.user.id);
             setTimeout(() => modalLocks.delete(i.user.id), 5000);
@@ -1330,7 +1396,6 @@ Main состав — основа нашей семьи. Здесь играю�
             const type = i.customId.replace("apply_modal_", "");
             const targetCategory = type === "main" ? config.CHANNELS.MAIN_CATEGORY : config.CHANNELS.CATEGORY;
             const expectedChannelName = `${type}-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
-
             await i.guild.channels.fetch().catch(() => null);
 
             const existingChannel = i.guild.channels.cache.find(c => 
@@ -1416,6 +1481,91 @@ ${data.q4}`;
 
             await channel.send({ content: topContent, embeds: [embed], components: [row] });
             await i.reply({ content: `✅ Заявка создана! Канал: <#${channel.id}>`, ephemeral: true });
+            return;
+            } // end else (not recruit)
+        }
+
+        // =====================================================
+        // ОБРАБОТКА ЗАЯВКИ В RECRUIT ОТДЕЛ
+        // =====================================================
+        if (i.isModalSubmit() && i.customId === "apply_modal_recruit") {
+            if (modalLocks.has(i.user.id)) return;
+            modalLocks.add(i.user.id);
+            setTimeout(() => modalLocks.delete(i.user.id), 5000);
+
+            const recruitCategory = config.CHANNELS.RECRUIT_CATEGORY || config.CHANNELS.CATEGORY;
+            const expectedChannelName = `recruit-${i.user.username}`.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+
+            await i.guild.channels.fetch().catch(() => null);
+
+            const existingChannel = i.guild.channels.cache.find(c =>
+                c.parentId === recruitCategory &&
+                c.name === expectedChannelName
+            );
+
+            if (existingChannel) {
+                await i.reply({ content: `⚠️ Ваша заявка уже создана: <#${existingChannel.id}>`, ephemeral: true }).catch(() => null);
+                return;
+            }
+
+            const recruitData = {
+                q1: i.fields.getTextInputValue("q1"),
+                q2: i.fields.getTextInputValue("q2"),
+                q3: i.fields.getTextInputValue("q3"),
+                q4: i.fields.getTextInputValue("q4"),
+                userId: i.user.id
+            };
+
+            const RECRUIT_ROLE_ID = "1468704257606684712";
+
+            const recruitChannel = await i.guild.channels.create({
+                name: expectedChannelName,
+                type: ChannelType.GuildText,
+                parent: recruitCategory,
+                permissionOverwrites: [
+                    { id: i.guild.id, deny: ["ViewChannel"] },
+                    { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
+                    ...(config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })) : []),
+                    { id: RECRUIT_ROLE_ID, allow: ["ViewChannel", "SendMessages"] }
+                ]
+            });
+
+            const rolesPing = config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ") : "";
+            const topContent = `${rolesPing} <@&${RECRUIT_ROLE_ID}>\n**Предыдущие заявки:**\nЗаявок не найдено.`;
+
+            const embedDescription = `**НИК И СТАТИК**
+${recruitData.q1}
+
+**ИМЯ И ВОЗРАСТ (В РЕАЛЕ)**
+${recruitData.q2}
+
+**ПОЧЕМУ ХОТИТЕ ПОПАСТЬ В RECRUIT?**
+${recruitData.q3}
+
+**ОПЫТ В РЕКРУТИНГЕ / СХОЖИХ РОЛЯХ**
+${recruitData.q4}
+
+**Пользователь**
+<@${i.user.id}>`;
+
+            const recruitEmbed = new EmbedBuilder()
+                .setTitle("Заявление — Recruit")
+                .setDescription(embedDescription)
+                .setColor("#2b2d31")
+                .addFields(
+                    { name: "Username", value: i.user.username, inline: true },
+                    { name: "ID", value: i.user.id, inline: true }
+                );
+
+            const recruitRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`app_accept_${i.user.id}`).setLabel("Принять").setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`app_review_${i.user.id}`).setLabel("Взять на рассмотрение").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`app_call_${i.user.id}`).setLabel("Вызвать на обзвон").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`app_reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger)
+            );
+
+            await recruitChannel.send({ content: topContent, embeds: [recruitEmbed], components: [recruitRow] });
+            await i.reply({ content: `✅ Заявка в Recruit создана! Канал: <#${recruitChannel.id}>`, ephemeral: true });
             return;
         }
 
@@ -1546,7 +1696,12 @@ ${data.q4}`;
                     
                     const isAcademy = i.channel.name.startsWith("academy");
                     const isMain = i.channel.name.startsWith("main");
-                    const rolesToAdd = isAcademy ? config.ACADEMY_ROLES : (isMain ? config.MAIN_ROLES : config.CAPTURE_ROLES);
+                    const isRecruit = i.channel.name.startsWith("recruit");
+                    let rolesToAdd;
+                    if (isAcademy) rolesToAdd = config.ACADEMY_ROLES;
+                    else if (isMain) rolesToAdd = config.MAIN_ROLES;
+                    else if (isRecruit) rolesToAdd = ["1468704257606684712"];
+                    else rolesToAdd = config.CAPTURE_ROLES;
                     await targetMember.roles.add(rolesToAdd).catch(() => null);
 
                     const liveData = applications.get(targetId);
@@ -1557,7 +1712,7 @@ ${data.q4}`;
                     };
                     saveDB(salary);
 
-                    if (isMain) {
+                    if (isMain || isRecruit) {
                         embed.setColor("Purple").setTitle("Заявление (Принято)");
                         await i.update({ embeds: [embed], components: [] });
                     } else {
@@ -1566,7 +1721,7 @@ ${data.q4}`;
                             SendMessages: false
                         }).catch(() => null);
 
-                        const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "").replace("main-", "");
+                        const cleanName = i.channel.name.replace("academy-", "").replace("capture-", "").replace("main-", "").replace("recruit-", "");
                         await i.channel.setName(`closed-${cleanName}`).catch(() => null);
 
                         embed.setColor("Purple").setTitle("Заявление (Принято и Закрыто)");
@@ -1589,10 +1744,11 @@ ${data.q4}`;
                         }
                     }
 
-                    if (isMain) {
-                        await targetMember.send({
-                            content: `👋 **Привет!** Твоя заявка в **Main состав** Darkness на сервере **${i.guild.name}** была проверена.\n\n🎉 Поздравляем, кандидат успешно принят в Main состав!`
-                        }).catch(() => {
+                    if (isMain || isRecruit) {
+                        const dmText = isRecruit
+                            ? `👋 **Привет!** Твоя заявка в **отдел Recruit** Darkness на сервере **${i.guild.name}** была проверена.\n\n🎉 Поздравляем, ты успешно принят в Recruit!`
+                            : `👋 **Привет!** Твоя заявка в **Main состав** Darkness на сервере **${i.guild.name}** была проверена.\n\n🎉 Поздравляем, кандидат успешно принят в Main состав!`;
+                        await targetMember.send({ content: dmText }).catch(() => {
                             i.channel.send(`⚠️ <@${targetId}>, бот не смог написать вам в ЛС, так как у вас закрыты личные сообщения!`).catch(() => null);
                         });
 
