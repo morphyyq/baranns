@@ -1805,10 +1805,9 @@ ${recruitData.q4}
                         const auditChannel = await i.guild.channels.fetch(auditChannelId).catch(() => null);
                         if (auditChannel) {
                             const auditLabel = isMain ? "Main состав" : isRecruit ? "Recruit" : "Семья";
-                            const auditEmbed = new EmbedBuilder()
-                                .setTitle(`✅ Заявка принята | ${auditLabel}`)
+                            const auditEmbed = EmbedBuilder.from(i.message.embeds[0])
                                 .setColor("Green")
-                                .setDescription(`👤 **Кандидат:** <@${targetId}>\n✅ **Принял:** <@${i.user.id}>`)
+                                .setTitle(`✅ Заявка принята | ${auditLabel}`)
                                 .addFields(
                                     { name: "Кого", value: `<@${targetId}>`, inline: true },
                                     { name: "Принял", value: `<@${i.user.id}>`, inline: true }
@@ -1853,9 +1852,9 @@ ${recruitData.q4}
                     if (reviewAuditId) {
                         const auditChannel = await i.guild.channels.fetch(reviewAuditId).catch(() => null);
                         if (auditChannel) {
-                            const auditEmbed = new EmbedBuilder()
-                                .setTitle(`⏳ Заявка на рассмотрении`)
+                            const auditEmbed = EmbedBuilder.from(i.message.embeds[0])
                                 .setColor("Yellow")
+                                .setTitle("⏳ Заявка на рассмотрении")
                                 .addFields(
                                     { name: "Кого", value: `<@${targetId}>`, inline: true },
                                     { name: "Взял на рассмотрение", value: `<@${i.user.id}>`, inline: true }
