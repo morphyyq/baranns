@@ -387,7 +387,18 @@ client.once(Events.ClientReady, async () => {
 
         new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
         new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
-        new SlashCommandBuilder().setName("delete").setDescription("Полностью очистить все балансы игроков"),
+        new SlashCommandBuilder()
+            .setName("reset_salary")
+            .setDescription("Полностью очистить все балансы игроков"),
+        new SlashCommandBuilder()
+            .setName("deduct")
+            .setDescription("Снять сумму с баланса рекрута")
+            .addUserOption(opt =>
+                opt.setName("user").setDescription("Рекрут").setRequired(true)
+            )
+            .addIntegerOption(opt =>
+                opt.setName("amount").setDescription("Сумма для списания (например 10000)").setRequired(true).setMinValue(1)
+            ),
         new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений"),
         new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом"),
         new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава"),
@@ -418,6 +429,60 @@ client.once(Events.ClientReady, async () => {
         await updateAFKEmbed(mainGuild);
     }
     setInterval(updateOnlineMonitor, 60000);
+
+    // =====================================================
+    // ЕЖЕНЕДЕЛЬНЫЙ СБРОС ЗАРПЛАТ — каждое воскресенье в 20:00 МСК
+    // =====================================================
+    setInterval(async () => {
+        const now = new Date();
+        // МСК = UTC+3
+        const msk = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        const isSunday  = msk.getUTCDay()    === 0;
+        const isHour    = msk.getUTCHours()  === 20;
+        const isMinute  = msk.getUTCMinutes() === 0;
+        if (!isSunday || !isHour || !isMinute) return;
+
+        try {
+            const guild = await client.guilds.fetch("1458190222042075251").catch(() => null);
+            if (!guild) return;
+
+            const auditChannel = await guild.channels.fetch("1500501911848095906").catch(() => null);
+            if (!auditChannel) return;
+
+            // Формируем итоговую таблицу
+            let list = "";
+            let total = 0;
+            for (const [recruiterId, bal] of Object.entries(salary.balances)) {
+                if (bal > 0) {
+                    list += `• <@${recruiterId}> — **$${bal.toLocaleString()}**\n`;
+                    total += bal;
+                }
+            }
+            if (!list) list = "*На этой неделе выплат не было.*";
+
+            const reportEmbed = new EmbedBuilder()
+                .setTitle("📋 Еженедельная ведомость зарплат рекрут-состава")
+                .setDescription(`Итоговый отчёт за неделю. После этого сообщения балансы сброшены.\n\n${list}`)
+                .addFields({ name: "💵 Итого к выплате:", value: `**$${total.toLocaleString()}**`, inline: false })
+                .setColor("Gold")
+                .setTimestamp();
+
+            await auditChannel.send({ embeds: [reportEmbed] }).catch(() => null);
+
+            // Сбрасываем балансы и привязки
+            salary.balances = {};
+            salary.recruits = {};
+            salary.auditMessages = {};
+            await saveDB(salary);
+
+            // Обновляем embed зарплат
+            await updateSalaryEmbed(guild);
+
+            console.log(`[WEEKLY RESET] Зарплаты сброшены в воскресенье.`);
+        } catch (e) {
+            console.error("[WEEKLY RESET ERROR]", e);
+        }
+    }, 60000); // проверяем каждую минуту
 });
 
 
@@ -640,13 +705,35 @@ client.on(Events.InteractionCreate, async (i) => {
                 return;
             }
 
-            if (i.commandName === "delete") {
+            if (i.commandName === "reset_salary") {
                 salary.balances = {};
                 salary.recruits = {};
                 salary.auditMessages = {};
                 await saveDB(salary);
                 await updateSalaryEmbed(i.guild);
                 await i.reply({ content: "✅ Все балансы и привязки игроков были полностью аннулированы!", ephemeral: true });
+                return;
+            }
+
+            if (i.commandName === "deduct") {
+                const targetUser = i.options.getUser("user");
+                const amount    = i.options.getInteger("amount");
+
+                const currentBal = salary.balances[targetUser.id] || 0;
+                if (currentBal === 0) {
+                    await i.reply({ content: `❌ У <@${targetUser.id}> баланс уже **$0** — списывать нечего.`, ephemeral: true });
+                    return;
+                }
+
+                const newBal = Math.max(0, currentBal - amount);
+                salary.balances[targetUser.id] = newBal;
+                await saveDB(salary);
+                await updateSalaryEmbed(i.guild);
+
+                await i.reply({
+                    content: `✅ С баланса <@${targetUser.id}> списано **$${amount.toLocaleString()}**.\nБыло: **$${currentBal.toLocaleString()}** → Стало: **$${newBal.toLocaleString()}**`,
+                    ephemeral: true
+                });
                 return;
             }
 
