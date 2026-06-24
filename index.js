@@ -823,23 +823,6 @@ client.on(Events.InteractionCreate, async (i) => {
             // МП ПАНЕЛЬ
             // =====================================================
             if (i.commandName === "mp_panel") {
-                const embed = new EmbedBuilder()
-                    .setTitle("🎮 Отчёт об МПшках | Маджестик РП")
-                    .setDescription(
-`Выберите МПшку из выпадающего меню ниже, чтобы отправить отчёт.
-
-**Доступные МПшки:**
-🏭 Цеха — +15 (win) / +7 (lose)
-💊 Диллеры — +15 (win) / +7 (lose)
-📦 Дроп — +20 (win) / +10 (lose)
-💼 Бизаки — +8 (win) / +3 (lose)
-🏟️ Арена — +4 (1st) / +0 (lose)
-🏝️ Остров — +15 (win) / +7 (lose)
-🗺️ Тайники — +5 (win) / +2 (lose)
-⚔️ Капт — +20 (win) / +10 (lose)`
-                    )
-                    .setColor("#2b2d31");
-
                 const mpMenuRow = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId("mp_select_type")
@@ -856,7 +839,7 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                await i.channel.send({ embeds: [embed], components: [mpMenuRow] });
+                await i.channel.send({ components: [mpMenuRow] });
                 await i.reply({ content: "✅ Панель МП отчётов создана!", ephemeral: true });
                 return;
             }
