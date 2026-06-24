@@ -839,7 +839,36 @@ client.on(Events.InteractionCreate, async (i) => {
                         )
                 );
 
-                await i.channel.send({ components: [mpMenuRow] });
+                const mpPanelText = `# СИСТЕМА ПОВЫШЕНИЯ
+**•  1 → 2 РАНГ**
+<:df:1516907994552602634> 50 PR + фамилия • 3+ дня в семье,
+<:df:1516907994552602634> Фамилия \`Darkness\`
+
+**•  2 → 3 РАНГ**
+<:df:1516907994552602634> 100 PR • 14+ дней в семье
+
+**•  3 → 4 РАНГ | Main RP and Capture**
+<:df:1516907994552602634> 150 PR • заявка → <#1503001219201761301>
+<:df:1516907994552602634> 20+ дней • адекватность
+
+**•  5 РАНГ — Recruit**
+<:df:1516907994552602634> Заявка → <#1499701507619291206>
+
+**•  6 РАНГ** — High and Chief - Rec, Capt, Farm
+**•  7 РАНГ** — Dep. Leader
+**•  8 РАНГ** — Owner
+————————————————————————————————————————————————
+# СЕМЕЙНЫЕ БАЛЛЫ
+Цеха: \`+15\` WIN | \`+7\` LOSE
+Диллеры: \`+15\` WIN | \`+7\` LOSE
+Дроп: \`+20\` WIN | \`+10\` LOSE
+Бизаки: \`+8\` WIN | \`+3\` LOSE
+Арена: \`+4\` 1st | \`+0\` LOSE
+Остров: \`+15\` WIN | \`+7\` LOSE
+Тайники: \`+5\` WIN | \`+2\` LOSE
+Капт: \`+20\` WIN | \`+10\` LOSE`;
+
+                await i.channel.send({ content: mpPanelText, components: [mpMenuRow] });
                 await i.reply({ content: "✅ Панель МП отчётов создана!", ephemeral: true });
                 return;
             }
