@@ -94,8 +94,8 @@ const SERVERS = {
         ],
         ACADEMY_ROLES: [
             "1458410756453306490",
-            "1458485405769797848",
-            "1507798049416675531"
+            "1507798049416675531",
+            "1513647909965533377"
         ],
         CAPTURE_ROLES: [
             "1458410756453306490",
@@ -2377,6 +2377,7 @@ ${recruitData.q4}
                     else if (isRecruit) rolesToAdd = ["1468704257606684712"];
                     else rolesToAdd = config.CAPTURE_ROLES;
                     await targetMember.roles.add(rolesToAdd).catch(() => null);
+                    if (isAcademy) await targetMember.roles.remove("1458410670071615580").catch(() => null);
 
                     const liveData = applications.get(targetId);
                     salary.archive[targetId] = {
