@@ -2159,7 +2159,7 @@ ${data.q5}
                 userId: i.user.id
             };
 
-            const RECRUIT_ROLE_ID = "1468704257606684712";
+            const RECRUIT_ROLE_ID = "1519806507011805215";
 
             const recruitChannel = await i.guild.channels.create({
                 name: expectedChannelName,
@@ -2168,13 +2168,11 @@ ${data.q5}
                 permissionOverwrites: [
                     { id: i.guild.id, deny: ["ViewChannel"] },
                     { id: i.user.id, allow: ["ViewChannel", "SendMessages"] },
-                    ...(config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(role => ({ id: role, allow: ["ViewChannel", "SendMessages"] })) : []),
                     { id: RECRUIT_ROLE_ID, allow: ["ViewChannel", "SendMessages"] }
                 ]
             });
 
-            const rolesPing = config.ALLOWED_ROLES ? config.ALLOWED_ROLES.map(r => `<@&${r}>`).join(" ") : "";
-            const topContent = `${rolesPing} <@&${RECRUIT_ROLE_ID}>\n**Предыдущие заявки:**\nЗаявок не найдено.`;
+            const topContent = `<@&${RECRUIT_ROLE_ID}>\n**Предыдущие заявки:**\nЗаявок не найдено.`;
 
             const embedDescription = `**НИК И СТАТИК**
 ${recruitData.q1}
