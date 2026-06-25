@@ -607,6 +607,12 @@ client.on(Events.MessageCreate, async (msg) => {
             const mpData = applications.get(awaitKey);
             applications.delete(awaitKey);
 
+            // Забираем временный доступ обратно
+            const mpScreenChannel = await client.channels.fetch(mpData.channelId).catch(() => null);
+            if (mpScreenChannel) {
+                await mpScreenChannel.permissionOverwrites.delete(msg.author.id).catch(() => null);
+            }
+
             const reviewChannel = await client.channels.fetch(MP_REVIEW_CHANNEL).catch(() => null);
             if (!reviewChannel) return;
 
@@ -1320,6 +1326,13 @@ Main состав — основа нашей семьи. Здесь играю�
             const mpType = i.customId.replace("mp_select_result_", "");
             const result = i.values[0];
             const points = MP_TYPES[mpType] ? MP_TYPES[mpType][result] : 0;
+
+            // Выдаём временный доступ на отправку сообщений и файлов в этот канал
+            await i.channel.permissionOverwrites.edit(i.user.id, {
+                SendMessages: true,
+                AttachFiles: true,
+                ViewChannel: true
+            }).catch(() => null);
 
             // Сохраняем в Map для ожидания скрина
             applications.set(`mp_await_${i.user.id}`, { mpType, result, points, channelId: i.channelId });
