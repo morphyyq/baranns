@@ -430,6 +430,15 @@ client.once(Events.ClientReady, async () => {
             .addIntegerOption(opt =>
                 opt.setName("amount").setDescription("Сумма для списания (например 10000)").setRequired(true).setMinValue(1)
             ),
+        new SlashCommandBuilder()
+            .setName("add_salary")
+            .setDescription("Добавить зарплату рекруту")
+            .addUserOption(opt =>
+                opt.setName("user").setDescription("Рекрут").setRequired(true)
+            )
+            .addIntegerOption(opt =>
+                opt.setName("amount").setDescription("Сумма для начисления (например 10000)").setRequired(true).setMinValue(1)
+            ),
         new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений"),
         new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом"),
         new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава"),
@@ -846,6 +855,23 @@ client.on(Events.InteractionCreate, async (i) => {
 
                 await i.reply({
                     content: `✅ С баланса <@${targetUser.id}> списано **$${amount.toLocaleString()}**.\nБыло: **$${currentBal.toLocaleString()}** → Стало: **$${newBal.toLocaleString()}**`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (i.commandName === "add_salary") {
+                const targetUser = i.options.getUser("user");
+                const amount     = i.options.getInteger("amount");
+
+                const currentBal = salary.balances[targetUser.id] || 0;
+                const newBal = currentBal + amount;
+                salary.balances[targetUser.id] = newBal;
+                await saveDB(salary);
+                await updateSalaryEmbed(i.guild);
+
+                await i.reply({
+                    content: `✅ Рекруту <@${targetUser.id}> начислено **$${amount.toLocaleString()}**.\nБыло: **$${currentBal.toLocaleString()}** → Стало: **$${newBal.toLocaleString()}**`,
                     ephemeral: true
                 });
                 return;
