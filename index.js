@@ -540,10 +540,17 @@ client.on(Events.GuildMemberRemove, async (member) => {
 
         if (salary.recruits && salary.recruits[member.id]) {
             const recruiterId = salary.recruits[member.id];
-            
-            if (salary.balances[recruiterId]) {
-                salary.balances[recruiterId] -= 10000;
-                if (salary.balances[recruiterId] < 0) salary.balances[recruiterId] = 0;
+
+            // Если у участника перед выходом осталась только одна роль (DEDUCT_ROLE_ID),
+            // значит GuildMemberUpdate уже списал $10,000 — не списываем второй раз
+            const rolesWithoutEveryone = member.roles.cache.filter(r => r.id !== member.guild.id);
+            const alreadyDeducted = rolesWithoutEveryone.size === 1 && rolesWithoutEveryone.has(DEDUCT_ROLE_ID);
+
+            if (!alreadyDeducted) {
+                if (salary.balances[recruiterId]) {
+                    salary.balances[recruiterId] -= 10000;
+                    if (salary.balances[recruiterId] < 0) salary.balances[recruiterId] = 0;
+                }
             }
 
             if (salary.auditMessages && salary.auditMessages[member.id]) {
@@ -570,14 +577,15 @@ client.on(Events.GuildMemberRemove, async (member) => {
             await saveDB(salary);
             await updateSalaryEmbed(member.guild);
 
-            // Уведомление в канал о списании (вышел)
-            const newBal = salary.balances[recruiterId] || 0;
-            const notifyChannel = await member.guild.channels.fetch("1518544382985371698").catch(() => null);
-            if (notifyChannel) {
-                await notifyChannel.send({
-                    content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — <@${member.id}> **вышел с сервера**.
-Ваш баланс: **$${newBal.toLocaleString()}**`
-                }).catch(() => null);
+            // Уведомление только если списание произошло именно здесь (не было раньше через MemberUpdate)
+            if (!alreadyDeducted) {
+                const newBal = salary.balances[recruiterId] || 0;
+                const notifyChannel = await member.guild.channels.fetch("1518544382985371698").catch(() => null);
+                if (notifyChannel) {
+                    await notifyChannel.send({
+                        content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — <@${member.id}> **вышел с сервера**.\nВаш баланс: **$${newBal.toLocaleString()}**`
+                    }).catch(() => null);
+                }
             }
         }
     } catch (e) {
