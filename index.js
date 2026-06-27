@@ -342,39 +342,26 @@ async function updateAFKEmbed(guild) {
         const channel = await guild.channels.fetch("1500519252518768792").catch(() => null);
         if (!channel) return;
 
+        let description = "📋 **Список активных участников в АФК режиме:**\n\n";
         const afkEntries = Object.entries(salary.afk);
-        const total = afkEntries.length;
 
-        let description = `**• Всего в афк ${total} человек**\n\n`;
-
-        if (total === 0) {
+        if (afkEntries.length === 0) {
             description += "*В данный момент никто не находится в АФК режиме.*";
         } else {
-            afkEntries.forEach(([userId, data], index) => {
-                let timestamp, reason;
-                if (typeof data === "object" && data !== null) {
-                    timestamp = data.timestamp;
-                    reason = data.reason || "афк";
-                } else {
-                    timestamp = data;
-                    reason = "афк";
-                }
+            afkEntries.forEach(([userId, timestamp]) => {
                 const timeUnix = Math.floor(new Date(timestamp).getTime() / 1000);
-                const returnUnix = typeof data === "object" && data !== null && data.returnAt
-                    ? Math.floor(new Date(data.returnAt).getTime() / 1000)
-                    : timeUnix + 4 * 60 * 60;
-                description += `${index + 1}) <@${userId}> Причина: ${reason} Вернусь в: <t:${returnUnix}:t>\n`;
+                description += `• <@${userId}> — Встал в АФК: <t:${timeUnix}:R> (<t:${timeUnix}:t>)\n`;
             });
         }
 
         const embed = new EmbedBuilder()
-            .setTitle("🕐 Люди, находящиеся в АФК:")
+            .setTitle("⏳ Мониторинг АФК статусов")
             .setDescription(description)
             .setColor("#2b2d31")
             .setTimestamp();
 
         const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-        const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title === "🕐 Люди, находящиеся в АФК:") : null;
+        const botMessage = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0 && m.embeds[0].title === "⏳ Мониторинг АФК статусов") : null;
 
         if (botMessage) {
             await botMessage.edit({ embeds: [embed] }).catch(() => null);
@@ -454,15 +441,6 @@ client.once(Events.ClientReady, async () => {
             ),
         new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений"),
         new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом"),
-        new SlashCommandBuilder()
-            .setName("kick_afk")
-            .setDescription("Кикнуть пользователя из АФК списка")
-            .addUserOption(opt =>
-                opt.setName("user").setDescription("Пользователь").setRequired(true)
-            )
-            .addStringOption(opt =>
-                opt.setName("reason").setDescription("Причина кика").setRequired(true)
-            ),
         new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава"),
         new SlashCommandBuilder().setName("main_panel").setDescription("Отправить панель заявки в Main состав"),
         new SlashCommandBuilder().setName("recruit_panel").setDescription("Отправить панель заявки в отдел Recruit"),
@@ -1265,13 +1243,6 @@ Main состав — основа нашей семьи. Здесь играю�
                 return;
             }
 
-            if (i.commandName === "report_panel") {
-                const channel = await client.channels.fetch(config.CHANNELS.PANEL).catch(() => null);
-                if (!channel) {
-                    await i.reply({ content: "❌ Канал не найден.", ephemeral: true });
-                    return;
-                }
-
                 const embed = new EmbedBuilder()
                     .setTitle("🔮 СИСТЕМА ПОВЫШЕНИЯ | DARKNESS FAMQ")
                     .setDescription(
@@ -1322,13 +1293,8 @@ Main состав — основа нашей семьи. Здесь играю�
             }
 
             if (i.commandName === "afk_panel") {
-                await i.deferReply({ ephemeral: true });
-
                 const channel = await i.guild.channels.fetch("1500519252518768792").catch(() => null);
-                if (!channel) {
-                    await i.editReply({ content: "❌ Канал АФК не найден." });
-                    return;
-                }
+                if (!channel) return i.reply({ content: "❌ Канал АФК не найден.", ephemeral: true });
 
                 const embed = new EmbedBuilder()
                     .setTitle("⏳ Пульт управления АФК статусом")
@@ -1341,32 +1307,7 @@ Main состав — основа нашей семьи. Здесь играю�
                 );
 
                 await channel.send({ embeds: [embed], components: [row] });
-                await i.editReply({ content: "✅ Управляющая панель АФК отправлена." });
-                return;
-            }
-
-            // =====================================================
-            // KICK AFK
-            // =====================================================
-            if (i.commandName === "kick_afk") {
-                const targetUser = i.options.getUser("user");
-                const reason = i.options.getString("reason");
-
-                if (!salary.afk[targetUser.id]) {
-                    await i.reply({ content: `❌ <@${targetUser.id}> не находится в АФК.`, ephemeral: true });
-                    return;
-                }
-
-                delete salary.afk[targetUser.id];
-                await saveDB(salary);
-                await updateAFKEmbed(i.guild);
-
-                // Отправляем ЛС пользователю
-                await targetUser.send({
-                    content: `🚫 Вас кикнули из АФК на сервере кикнул член: <@${i.user.id}>.\nПричина: **${reason}**`
-                }).catch(() => null);
-
-                await i.reply({ content: `✅ <@${targetUser.id}> убран из АФК. Причина: **${reason}**`, ephemeral: true });
+                await i.reply({ content: "✅ Управляющая панель АФК отправлена.", ephemeral: true });
                 return;
             }
 
@@ -1411,8 +1352,6 @@ Main состав — основа нашей семьи. Здесь играю�
                 await i.reply({ content: "✅ Панель сборов отправлена!", ephemeral: true });
                 return;
             }
-
-        } // end isChatInputCommand
 
 
         // =====================================================
@@ -1680,69 +1619,17 @@ Main состав — основа нашей семьи. Здесь играю�
 
         if (i.isButton() && (i.customId === "afk_enter" || i.customId === "afk_leave")) {
             if (i.customId === "afk_enter") {
-                // Открываем модальное окно с причиной и временем возвращения
-                const afkModal = new ModalBuilder()
-                    .setCustomId("afk_enter_modal")
-                    .setTitle("АФК статус");
-
-                const reasonInput = new TextInputBuilder()
-                    .setCustomId("afk_reason")
-                    .setLabel("Причина АФК")
-                    .setPlaceholder("Дела, сновидеть, работа...")
-                    .setRequired(true)
-                    .setStyle(TextInputStyle.Short);
-
-                const returnInput = new TextInputBuilder()
-                    .setCustomId("afk_return")
-                    .setLabel("Вернусь в (например: 23:30)")
-                    .setPlaceholder("23:30")
-                    .setRequired(true)
-                    .setStyle(TextInputStyle.Short);
-
-                afkModal.addComponents(
-                    new ActionRowBuilder().addComponents(reasonInput),
-                    new ActionRowBuilder().addComponents(returnInput)
-                );
-
-                await i.showModal(afkModal);
-                return;
+                salary.afk[i.user.id] = new Date().toISOString();
+                await saveDB(salary);
+                await i.reply({ content: "🟢 Вы успешно перешли в статус АФК. Уведомления о сборах приостановлены.", ephemeral: true });
             } else {
                 if (salary.afk[i.user.id]) {
                     delete salary.afk[i.user.id];
                     await saveDB(salary);
                 }
                 await i.reply({ content: "🏃 Вы вышли из режима АФК.", ephemeral: true });
-                await updateAFKEmbed(i.guild);
             }
-            return;
-        }
-
-        // Обработка модали АФК
-        if (i.isModalSubmit() && i.customId === "afk_enter_modal") {
-            const reason = i.fields.getTextInputValue("afk_reason");
-            const returnTime = i.fields.getTextInputValue("afk_return");
-
-            // Парсим время возвращения (HH:MM) в Date
-            const now = new Date();
-            let returnAt = null;
-            const timeMatch = returnTime.match(/^(\d{1,2}):(\d{2})$/);
-            if (timeMatch) {
-                returnAt = new Date();
-                returnAt.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0, 0);
-                // Если время уже прошло сегодня, значит завтра
-                if (returnAt <= now) returnAt.setDate(returnAt.getDate() + 1);
-            }
-
-            salary.afk[i.user.id] = {
-                timestamp: now.toISOString(),
-                reason: reason,
-                returnAt: returnAt ? returnAt.toISOString() : null,
-                returnTime: returnTime
-            };
-            await saveDB(salary);
             await updateAFKEmbed(i.guild);
-
-            await i.reply({ content: `💤 Вы в АФК. Причина: **${reason}** | Вернусь в: **${returnTime}**`, ephemeral: true });
             return;
         }
 
