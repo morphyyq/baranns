@@ -604,11 +604,41 @@ client.on(Events.GuildMemberRemove, async (member) => {
 
 
 // =====================================================
+// SLOW MODE — канал 1519237719748907161 (20 сек между сообщениями)
+// =====================================================
+const SLOWMODE_CHANNEL_ID = "1519237719748907161";
+const SLOWMODE_DELAY = 20 * 1000; // 20 секунд в миллисекундах
+const slowmodeCooldowns = new Map(); // userId -> timestamp последнего сообщения
+
+
+// =====================================================
 // MESSAGE SYSTEM
 // =====================================================
 client.on(Events.MessageCreate, async (msg) => {
     try {
         if (!msg.guild || msg.author.bot) return;
+
+        // SLOW MODE: удаляем сообщение если пользователь пишет слишком часто
+        if (msg.channel.id === SLOWMODE_CHANNEL_ID) {
+            const now = Date.now();
+            const lastTime = slowmodeCooldowns.get(msg.author.id) || 0;
+            const diff = now - lastTime;
+
+            if (diff < SLOWMODE_DELAY) {
+                const remaining = Math.ceil((SLOWMODE_DELAY - diff) / 1000);
+                await msg.delete().catch(() => null);
+
+                // Шлём предупреждение в канал и удаляем через 4 сек
+                const warn = await msg.channel.send({
+                    content: `⏳ <@${msg.author.id}>, подожди ещё **${remaining} сек.** перед следующим сообщением.`
+                }).catch(() => null);
+
+                if (warn) setTimeout(() => warn.delete().catch(() => null), 4000);
+                return;
+            }
+
+            slowmodeCooldowns.set(msg.author.id, now);
+        }
 
         const config = SERVERS[msg.guild.id];
         if (!config) return;
