@@ -863,7 +863,8 @@ client.on(Events.InteractionCreate, async (i) => {
                     await i.guild.members.fetch();
                     const targetMembers = i.guild.members.cache.filter(m => 
                         m.roles.cache.has("1458410756453306490") && 
-                        !m.user.bot
+                        !m.user.bot &&
+                        !salary.afk[m.id]
                     );
 
                     let successCount = 0;
