@@ -368,7 +368,7 @@ async function updateAFKEmbed(guild) {
                 ? `<t:${Math.floor(returnTimestamp / 1000)}:T>`
                 : "—";
 
-            listLines += `**${idx + 1}) <@${userId}>** Причина: ${reason} Вернусь в: ${returnStr}\n`;
+            listLines += `**${idx + 1}) <@${userId}>** Причина : \`${reason}\` Вернусь в : \`${returnStr}\`\n`;
         });
 
         if (!listLines) listLines = "*В данный момент никто не находится в АФК режиме.*";
@@ -377,12 +377,11 @@ async function updateAFKEmbed(guild) {
             .setTitle(`⏱ Люди, находящиеся в АФК:`)
             .setDescription(`**Всего в афк ${total} человек:**\n\n${listLines}`)
             .setColor("#1a1a2e")
-            .setFooter({ text: "Gucci famq SRP" })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("afk_enter").setLabel("Отошел АФК").setStyle(ButtonStyle.Secondary).setEmoji("💤"),
-            new ButtonBuilder().setCustomId("afk_leave").setLabel("Вернулся из АФК").setStyle(ButtonStyle.Success).setEmoji("🟢")
+            new ButtonBuilder().setCustomId("afk_leave").setLabel("Вернулся из АФК").setStyle(ButtonStyle.Secondary).setEmoji("🟢")
         );
 
         const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
