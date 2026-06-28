@@ -852,7 +852,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
         if (i.isChatInputCommand()) {
             
-            if (i.commandName !== "rank" && i.commandName !== "balance" && i.commandName !== "all" && i.commandName !== "mp_points" && i.commandName !== "mp_history") {
+            if (i.commandName !== "rank" && i.commandName !== "balance" && i.commandName !== "all" && i.commandName !== "mp_points" && i.commandName !== "mp_history" && i.commandName !== "afk_kick" && i.commandName !== "afk_list" && i.commandName !== "afk_panel") {
                 if (!config) return;
                 const hasPermission = config.ALLOWED_ROLES && config.ALLOWED_ROLES.some(role => i.member.roles.cache.has(role));
                 if (!hasPermission) {
