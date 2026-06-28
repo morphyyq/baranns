@@ -428,7 +428,8 @@ client.once(Events.ClientReady, async () => {
                 opt.setName("message")
                 .setDescription("Текст, который будет отправлен в ЛС")
                 .setRequired(true)
-            ),
+            )
+            .setDefaultMemberPermissions(0),
         
         // --- ОБНОВЛЕННАЯ КОМАНДА /panel ---
         new SlashCommandBuilder()
@@ -438,13 +439,15 @@ client.once(Events.ClientReady, async () => {
                 opt.setName("image")
                 .setDescription("Прикрепите картинку для баннера панели")
                 .setRequired(true)
-            ),
+            )
+            .setDefaultMemberPermissions(0),
 
-        new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс"),
-        new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами"),
+        new SlashCommandBuilder().setName("balance").setDescription("Посмотреть свой текущий баланс").setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("group_panel").setDescription("Отправить panel управления сборами").setDefaultMemberPermissions(0),
         new SlashCommandBuilder()
             .setName("reset_salary")
-            .setDescription("Полностью очистить все балансы игроков"),
+            .setDescription("Полностью очистить все балансы игроков")
+            .setDefaultMemberPermissions(0),
         new SlashCommandBuilder()
             .setName("deduct")
             .setDescription("Снять сумму с баланса рекрута")
@@ -453,7 +456,8 @@ client.once(Events.ClientReady, async () => {
             )
             .addIntegerOption(opt =>
                 opt.setName("amount").setDescription("Сумма для списания (например 10000)").setRequired(true).setMinValue(1)
-            ),
+            )
+            .setDefaultMemberPermissions(0),
         new SlashCommandBuilder()
             .setName("add_salary")
             .setDescription("Добавить зарплату рекруту")
@@ -462,30 +466,33 @@ client.once(Events.ClientReady, async () => {
             )
             .addIntegerOption(opt =>
                 opt.setName("amount").setDescription("Сумма для начисления (например 10000)").setRequired(true).setMinValue(1)
-            ),
-        new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений"),
-        new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом"),
-        new SlashCommandBuilder().setName("afk_list").setDescription("Вызвать / обновить панель АФК списка в канале"),
+            )
+            .setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений").setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("afk_panel").setDescription("Отправить panel ручного управления АФК статусом").setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("afk_list").setDescription("Вызвать / обновить панель АФК списка в канале").setDefaultMemberPermissions(0),
         new SlashCommandBuilder()
             .setName("afk_kick")
             .setDescription("Кикнуть участника из АФК с причиной (отправит ЛС)")
             .addUserOption(opt => opt.setName("user").setDescription("Участник в АФК").setRequired(true))
-            .addStringOption(opt => opt.setName("reason").setDescription("Причина кика из АФК").setRequired(true)),
-        new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава"),
-        new SlashCommandBuilder().setName("main_panel").setDescription("Отправить панель заявки в Main состав"),
-        new SlashCommandBuilder().setName("recruit_panel").setDescription("Отправить панель заявки в отдел Recruit"),
-        new SlashCommandBuilder().setName("rank").setDescription("Посмотреть статистику выполненных отчетов").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя")),
-        new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true)),
+            .addStringOption(opt => opt.setName("reason").setDescription("Причина кика из АФК").setRequired(true))
+            .setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("composition_panel").setDescription("Отправить ручную panel контроля состава").setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("main_panel").setDescription("Отправить панель заявки в Main состав").setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("recruit_panel").setDescription("Отправить панель заявки в отдел Recruit").setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("rank").setDescription("Посмотреть статистику выполненных отчетов").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя")).setDefaultMemberPermissions(0),
+        new SlashCommandBuilder().setName("info").setDescription("Получить личное дело и карточку заявки игрока").addUserOption(opt => opt.setName("user").setDescription("Выбрать пользователя").setRequired(true)).setDefaultMemberPermissions(0),
 
         // МП СИСТЕМА
-        new SlashCommandBuilder().setName("mp_panel").setDescription("Отправить панель отчётов об МПшках"),
+        new SlashCommandBuilder().setName("mp_panel").setDescription("Отправить панель отчётов об МПшках").setDefaultMemberPermissions(0),
         new SlashCommandBuilder().setName("mp_points").setDescription("Посмотреть свои МП баллы").addUserOption(opt => opt.setName("user").setDescription("Посмотреть баллы другого игрока")),
-        new SlashCommandBuilder().setName("mp_history").setDescription("Создать ветку с историей скринов игрока").addUserOption(opt => opt.setName("user").setDescription("Игрок").setRequired(true)),
+        new SlashCommandBuilder().setName("mp_history").setDescription("Создать ветку с историей скринов игрока").addUserOption(opt => opt.setName("user").setDescription("Игрок").setRequired(true)).setDefaultMemberPermissions(0),
         new SlashCommandBuilder()
             .setName("mp_deduct")
             .setDescription("Снять МП баллы с игрока")
             .addUserOption(opt => opt.setName("user").setDescription("Игрок").setRequired(true))
             .addIntegerOption(opt => opt.setName("amount").setDescription("Кол-во баллов для снятия").setRequired(true).setMinValue(1))
+            .setDefaultMemberPermissions(0)
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
