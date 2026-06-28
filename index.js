@@ -368,7 +368,7 @@ async function updateAFKEmbed(guild) {
                 ? `<t:${Math.floor(returnTimestamp / 1000)}:T>`
                 : "—";
 
-            listLines += `**${idx + 1}) <@${userId}>** Причина : \`${reason}\` Вернусь в : \`${returnStr}\`\n`;
+            listLines += `**${idx + 1}) <@${userId}>** Причина : \`${reason}\` Вернусь в : ${returnStr}\n`;
         });
 
         if (!listLines) listLines = "*В данный момент никто не находится в АФК режиме.*";
