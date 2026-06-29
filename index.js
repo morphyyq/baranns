@@ -66,10 +66,6 @@ client.on(Events.Error, (error) => {
 // =====================================================
 // CONFIG
 // =====================================================
-
-// Канал, в котором бот читает таблицы со скринов
-const TABLE_SCAN_CHANNEL_ID = "1521193585876144238";
-
 const SERVERS = {
     "1458190222042075251": {
         CHANNELS: {
@@ -765,72 +761,6 @@ client.on(Events.MessageCreate, async (msg) => {
             setTimeout(() => msg.channel.delete().catch(() => null), 3000);
             
             setTimeout(updateOnlineMonitor, 4000);
-            return;
-        }
-
-        // =====================================================
-        // TABLE SCAN — читаем таблицу с скрина через Claude Vision
-        // =====================================================
-        if (msg.channel.id === TABLE_SCAN_CHANNEL_ID) {
-            const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
-            if (!att) return;
-
-            const thinkingMsg = await msg.channel.send("🔍 Читаю таблицу, подождите...").catch(() => null);
-
-            try {
-                // Обращаемся к Claude Vision через OpenRouter (прямая ссылка на картинку)
-                const apiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: "anthropic/claude-opus-4-5",
-                        max_tokens: 2048,
-                        messages: [{
-                            role: "user",
-                            content: [
-                                {
-                                    type: "image_url",
-                                    image_url: {
-                                        url: att.url
-                                    }
-                                },
-                                {
-                                    type: "text",
-                                    text: "На этом скриншоте таблица из игры. Вытащи из неё данные каждого игрока в следующем формате (по одному на строку):\n\nИмя Фамилия | Static ID: XXXXX | Килы: XX | КД смерти: XX\n\nЕсли какого-то поля нет — напиши прочерк. Выводи ТОЛЬКО данные игроков, без лишних слов и пояснений."
-                                }
-                            ]
-                        }]
-                    })
-                });
-
-                const apiData = await apiRes.json();
-                console.log("[TABLE SCAN] API response:", JSON.stringify(apiData).slice(0, 500));
-                const resultText = apiData?.choices?.[0]?.message?.content?.trim();
-
-                if (thinkingMsg) await thinkingMsg.delete().catch(() => null);
-
-                if (!resultText) {
-                    const errDetail = apiData?.error?.message || JSON.stringify(apiData).slice(0, 200);
-                    await msg.channel.send(`❌ Не удалось распознать таблицу. Ошибка: ${errDetail}`).catch(() => null);
-                    return;
-                }
-
-                const embed = new EmbedBuilder()
-                    .setTitle("📋 Данные из таблицы")
-                    .setDescription("```\n" + resultText + "\n```")
-                    .setColor("Blue")
-                    .setFooter({ text: `Скрин от ${msg.author.tag}` })
-                    .setTimestamp();
-
-                await msg.channel.send({ embeds: [embed] }).catch(() => null);
-            } catch (err) {
-                if (thinkingMsg) await thinkingMsg.delete().catch(() => null);
-                console.error("[TABLE SCAN ERROR]", err);
-                await msg.channel.send("❌ Произошла ошибка при чтении таблицы.").catch(() => null);
-            }
             return;
         }
 
