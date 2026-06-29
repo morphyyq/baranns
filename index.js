@@ -778,13 +778,7 @@ client.on(Events.MessageCreate, async (msg) => {
             const thinkingMsg = await msg.channel.send("🔍 Читаю таблицу, подождите...").catch(() => null);
 
             try {
-                // Скачиваем изображение и конвертируем в base64
-                const imgRes = await fetch(att.url);
-                const imgBuf = await imgRes.arrayBuffer();
-                const base64 = Buffer.from(imgBuf).toString("base64");
-                const mediaType = att.contentType || "image/png";
-
-                // Обращаемся к Claude Vision через OpenRouter
+                // Обращаемся к Claude Vision через OpenRouter (прямая ссылка на картинку)
                 const apiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                     method: "POST",
                     headers: {
@@ -800,7 +794,7 @@ client.on(Events.MessageCreate, async (msg) => {
                                 {
                                     type: "image_url",
                                     image_url: {
-                                        url: `data:${mediaType};base64,${base64}`
+                                        url: att.url
                                     }
                                 },
                                 {
@@ -813,12 +807,14 @@ client.on(Events.MessageCreate, async (msg) => {
                 });
 
                 const apiData = await apiRes.json();
+                console.log("[TABLE SCAN] API response:", JSON.stringify(apiData).slice(0, 500));
                 const resultText = apiData?.choices?.[0]?.message?.content?.trim();
 
                 if (thinkingMsg) await thinkingMsg.delete().catch(() => null);
 
                 if (!resultText) {
-                    await msg.channel.send("❌ Не удалось распознать таблицу. Попробуйте отправить более чёткий скриншот.").catch(() => null);
+                    const errDetail = apiData?.error?.message || JSON.stringify(apiData).slice(0, 200);
+                    await msg.channel.send(`❌ Не удалось распознать таблицу. Ошибка: ${errDetail}`).catch(() => null);
                     return;
                 }
 
