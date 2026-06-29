@@ -660,6 +660,71 @@ client.on(Events.MessageCreate, async (msg) => {
         // =====================================================
         // МП СКРИН — ожидание скриншота от игрока
         // =====================================================
+        // =====================================================
+        // РП ОТЧЁТ — ожидание скриншота от игрока
+        // =====================================================
+        const awaitRpKey = `rp_await_${msg.author.id}`;
+        if (applications.has(awaitRpKey)) {
+            const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
+            if (!att) return; // ждём именно картинку
+
+            const rpData = applications.get(awaitRpKey);
+            applications.delete(awaitRpKey);
+
+            // Забираем доступ обратно
+            const rpChannel = await client.channels.fetch(rpData.channelId).catch(() => null);
+            if (rpChannel) {
+                await rpChannel.permissionOverwrites.delete(msg.author.id).catch(() => null);
+            }
+
+            const reviewChannel = await client.channels.fetch(MP_REVIEW_CHANNEL).catch(() => null);
+            if (!reviewChannel) return;
+
+            const file = new AttachmentBuilder(att.url, { name: "rp_screen.png" });
+
+            const rpName = rpData.rpName || rpData.label;
+
+            const embed = new EmbedBuilder()
+                .setTitle(`${rpData.emoji} ${rpData.label} | На проверке`)
+                .setDescription(
+                    `👤 **Игрок:** <@${msg.author.id}>\n` +
+                    `📝 **Тип:** ${rpData.label}\n` +
+                    `🎯 **Название:** ${rpName}\n` +
+                    `🏆 **Баллов при одобрении:** +${rpData.points}`
+                )
+                .setImage("attachment://rp_screen.png")
+                .setColor("Blue")
+                .setTimestamp();
+
+            // Кодируем название в base64 чтобы передать в customId (убираем спецсимволы)
+            const encodedName = Buffer.from(rpName).toString("base64").replace(/=/g, "");
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`rp_accept_${rpData.subType}_${msg.author.id}_${rpData.points}_${encodedName}`)
+                    .setLabel("✅ Одобрить")
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`rp_reject_${msg.author.id}`)
+                    .setLabel("❌ Отклонить")
+                    .setStyle(ButtonStyle.Danger)
+            );
+
+            await reviewChannel.send({ embeds: [embed], files: [file], components: [row] });
+
+            // Удаляем сообщение игрока
+            await msg.delete().catch(() => null);
+
+            // Уведомление
+            const notifChannel = await client.channels.fetch(MP_REJECTED_CHANNEL).catch(() => null);
+            if (notifChannel) {
+                const sentMsg = await notifChannel.send({
+                    content: `📨 <@${msg.author.id}>, ваш **${rpData.label}** (${rpName}) отправлен на проверку. Ожидайте решения администрации.`
+                }).catch(() => null);
+                if (sentMsg) setTimeout(() => sentMsg.delete().catch(() => null), 10000);
+            }
+            return;
+        }
+
         const awaitKey = `mp_await_${msg.author.id}`;
         if (applications.has(awaitKey)) {
             const att = msg.attachments.filter(a => a.contentType?.startsWith("image")).first();
@@ -1783,72 +1848,88 @@ Main состав — основа нашей семьи. Здесь играю�
         // =====================================================
         if (i.isButton() && (i.customId === "rp_submit_report" || i.customId === "rp_submit_gg" || i.customId === "rp_submit_green")) {
             const typeMap = {
-                "rp_submit_report": { label: "РП отчёт", points: 3 },
-                "rp_submit_gg":     { label: "Скрин ГГ", points: 1 },
-                "rp_submit_green":  { label: "Развоз грин", points: 1 }
+                "rp_submit_report": { label: "РП отчёт", points: 3, emoji: "📋" },
+                "rp_submit_gg":     { label: "Скрин ГГ", points: 1, emoji: "🖼️" },
+                "rp_submit_green":  { label: "Развоз грин", points: 1, emoji: "🌿" }
             };
             const typeData = typeMap[i.customId];
 
-            const modal = new ModalBuilder()
-                .setCustomId(`rp_modal_${i.customId}`)
-                .setTitle(`Подача: ${typeData.label}`);
+            // Проверяем — нет ли уже ожидания от этого игрока
+            const awaitRpKey = `rp_await_${i.user.id}`;
+            if (applications.has(awaitRpKey)) {
+                await i.reply({ content: "⏳ Вы уже отправили тип отчёта — пришлите скриншот в этот канал.", ephemeral: true });
+                return;
+            }
 
-            const linkInput = new TextInputBuilder()
-                .setCustomId("rp_link_input")
-                .setLabel("Ссылка на скриншот или описание")
-                .setPlaceholder("Вставьте ссылку на скрин или кратко опишите")
+            // Показываем модалку для ввода названия мероприятия
+            const nameModal = new ModalBuilder()
+                .setCustomId(`rp_name_modal_${i.customId}`)
+                .setTitle(`${typeData.label} — название`);
+
+            const nameInput = new TextInputBuilder()
+                .setCustomId("rp_name_input")
+                .setLabel("Название РП мероприятия")
+                .setPlaceholder("Например: Остров, Дроп, Цеха, Каптёрка...")
                 .setRequired(true)
-                .setStyle(TextInputStyle.Paragraph);
+                .setMaxLength(80)
+                .setStyle(TextInputStyle.Short);
 
-            modal.addComponents(new ActionRowBuilder().addComponents(linkInput));
-            await i.showModal(modal);
+            nameModal.addComponents(new ActionRowBuilder().addComponents(nameInput));
+            await i.showModal(nameModal);
             return;
         }
 
         // =====================================================
-        // РП ОТЧЁТ — обработка модалки
+        // РП ОТЧЁТ — модалка с названием, затем ждём скрин
         // =====================================================
-        if (i.isModalSubmit() && i.customId.startsWith("rp_modal_")) {
-            const subType = i.customId.replace("rp_modal_", "");
+        if (i.isModalSubmit() && i.customId.startsWith("rp_name_modal_")) {
+            const subType = i.customId.replace("rp_name_modal_", "");
             const typeMap = {
                 "rp_submit_report": { label: "РП отчёт", points: 3, emoji: "📋" },
                 "rp_submit_gg":     { label: "Скрин ГГ", points: 1, emoji: "🖼️" },
                 "rp_submit_green":  { label: "Развоз грин", points: 1, emoji: "🌿" }
             };
             const typeData = typeMap[subType];
-            const text = i.fields.getTextInputValue("rp_link_input");
+            const rpName = i.fields.getTextInputValue("rp_name_input");
 
-            const config = SERVERS[i.guild.id];
-            const reviewChannel = await client.channels.fetch(MP_REVIEW_CHANNEL).catch(() => null);
-            if (!reviewChannel) {
-                await i.reply({ content: "❌ Канал проверки не найден.", ephemeral: true });
-                return;
-            }
+            const awaitRpKey = `rp_await_${i.user.id}`;
 
-            const reviewEmbed = new EmbedBuilder()
-                .setTitle(`${typeData.emoji} ${typeData.label} | На проверке`)
-                .setDescription(
-                    `👤 **Игрок:** <@${i.user.id}>\n` +
-                    `📝 **Тип:** ${typeData.label}\n` +
-                    `💬 **Содержание:** ${text}\n` +
-                    `🏆 **Баллов при одобрении:** +${typeData.points}`
-                )
-                .setColor("Blue")
-                .setTimestamp();
+            // Выдаём временный доступ на отправку файлов в этот канал
+            await i.channel.permissionOverwrites.edit(i.user.id, {
+                SendMessages: true,
+                AttachFiles: true,
+                ViewChannel: true
+            }).catch(() => null);
 
-            const reviewRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`rp_accept_${subType}_${i.user.id}_${typeData.points}`)
-                    .setLabel("✅ Одобрить")
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId(`rp_reject_${i.user.id}`)
-                    .setLabel("❌ Отклонить")
-                    .setStyle(ButtonStyle.Danger)
-            );
+            // Сохраняем в Map вместе с названием
+            applications.set(awaitRpKey, {
+                subType,
+                label: typeData.label,
+                rpName,
+                points: typeData.points,
+                emoji: typeData.emoji,
+                channelId: i.channelId,
+                userId: i.user.id
+            });
 
-            await reviewChannel.send({ embeds: [reviewEmbed], components: [reviewRow] });
-            await i.reply({ content: `✅ Ваш **${typeData.label}** отправлен на проверку! Ожидайте решения.`, ephemeral: true });
+            await i.reply({
+                content: `${typeData.emoji} **${typeData.label}** — \`${rpName}\`
+
+📎 Теперь отправьте скриншот-доказательство **прямо в этот канал**.
+⚠️ У вас есть **2 минуты**, иначе заявка отменится.`,
+                ephemeral: true
+            });
+
+            // Таймер
+            setTimeout(async () => {
+                if (applications.has(awaitRpKey)) {
+                    applications.delete(awaitRpKey);
+                    await i.channel.permissionOverwrites.delete(i.user.id).catch(() => null);
+                    await i.channel.send({ content: `⏰ <@${i.user.id}>, время вышло! Скриншот не получен. Начните заново.` })
+                        .then(m => setTimeout(() => m.delete().catch(() => null), 8000))
+                        .catch(() => null);
+                }
+            }, 120000);
             return;
         }
 
@@ -1857,12 +1938,11 @@ Main состав — основа нашей семьи. Здесь играю�
         // =====================================================
         if (i.isButton() && i.customId.startsWith("rp_accept_")) {
             const parts = i.customId.split("_");
-            // rp_accept_rp_submit_report_USERID_POINTS  — но subType может содержать _
-            // формат: rp_accept_{subType}_{userId}_{points}
-            // берём последние 2 как userId и points, остальное — subType
-            const points = parseInt(parts[parts.length - 1]);
-            const userId = parts[parts.length - 2];
-            const subType = parts.slice(2, parts.length - 2).join("_");
+            // формат: rp_accept_{subType}_{userId}_{points}_{encodedName}
+            const encodedName = parts[parts.length - 1];
+            const points = parseInt(parts[parts.length - 2]);
+            const userId = parts[parts.length - 3];
+            const subType = parts.slice(2, parts.length - 3).join("_");
             const typeMap = {
                 "rp_submit_report": "РП отчёт",
                 "rp_submit_gg":     "Скрин ГГ",
@@ -1870,34 +1950,59 @@ Main состав — основа нашей семьи. Здесь играю�
             };
             const label = typeMap[subType] || subType;
 
+            // Декодируем название мероприятия
+            let rpName = label;
+            try { rpName = Buffer.from(encodedName, "base64").toString("utf-8"); } catch {}
+
             salary.mpPoints[userId] = (salary.mpPoints[userId] || 0) + points;
+
+            // Записываем в историю
+            if (!salary.mpHistory[userId]) salary.mpHistory[userId] = [];
+            const reportNum = salary.mpHistory[userId].length + 1;
+            const imgUrl = i.message.embeds[0]?.image?.url || null;
+            salary.mpHistory[userId].push({
+                mp: rpName, result: "win", points,
+                ts: Math.floor(Date.now() / 1000),
+                imageUrl: imgUrl
+            });
             await saveDB(salary);
 
             const acceptEmbed = EmbedBuilder.from(i.message.embeds[0])
                 .setColor("Green")
                 .setTitle(`✅ ${label} | Одобрен`)
                 .addFields(
-                    { name: "Принятый отчёт №" + (salary.mpHistory[userId]?.length + 1 || 1), value: `Название: ${label}`, inline: false },
+                    { name: `Принятый отчёт №${reportNum}`, value: `Название: ${rpName}`, inline: false },
                     { name: "Одобрил", value: `<@${i.user.id}>`, inline: true }
                 );
 
             await i.update({ embeds: [acceptEmbed], components: [] });
 
+            // Ищем портфель игрока и пишем туда
+            const portfolioChannel = i.guild.channels.cache.find(
+                c => c.topic === `portfolio_${userId}`
+            );
+            const nowStr = new Date().toLocaleDateString("ru-RU") + " " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+            if (portfolioChannel) {
+                const portfolioEmbed = new EmbedBuilder()
+                    .setTitle(`РП отчёт • ✅ Одобрен`)
+                    .setDescription(
+                        `**Принятый отчёт №${reportNum}**\n` +
+                        `**Название:** ${rpName}\n` +
+                        `**Серия:** [Открыть скрин](${imgUrl || "https://discord.com"})\n` +
+                        `**Дата:** ${nowStr}`
+                    )
+                    .setColor("Green")
+                    .setTimestamp();
+                await portfolioChannel.send({ embeds: [portfolioEmbed] }).catch(() => null);
+            }
+
+            // Уведомление в общий канал
             const notifChannel = await client.channels.fetch(MP_REJECTED_CHANNEL).catch(() => null);
             if (notifChannel) {
                 await notifChannel.send({
-                    content: `✅ <@${userId}>, ваш **${label}** одобрен! Начислено **+${points}** баллов. Всего: **${salary.mpPoints[userId]}**`
+                    content: `✅ <@${userId}>, ваш **${label}** (${rpName}) одобрен! Начислено **+${points}** баллов. Всего: **${salary.mpPoints[userId]}**`
                 }).catch(() => null);
             }
-
-            // Записываем в историю
-            if (!salary.mpHistory[userId]) salary.mpHistory[userId] = [];
-            salary.mpHistory[userId].push({
-                mp: label, result: "win", points,
-                ts: Math.floor(Date.now() / 1000),
-                imageUrl: null
-            });
-            await saveDB(salary);
             return;
         }
 
