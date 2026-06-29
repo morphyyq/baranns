@@ -714,14 +714,6 @@ client.on(Events.MessageCreate, async (msg) => {
             // Удаляем сообщение игрока
             await msg.delete().catch(() => null);
 
-            // Уведомление
-            const notifChannel = await client.channels.fetch(MP_REJECTED_CHANNEL).catch(() => null);
-            if (notifChannel) {
-                const sentMsg = await notifChannel.send({
-                    content: `📨 <@${msg.author.id}>, ваш **${rpData.label}** (${rpName}) отправлен на проверку. Ожидайте решения администрации.`
-                }).catch(() => null);
-                if (sentMsg) setTimeout(() => sentMsg.delete().catch(() => null), 10000);
-            }
             return;
         }
 
@@ -768,12 +760,6 @@ client.on(Events.MessageCreate, async (msg) => {
             // Удаляем сообщение со скрином от игрока
             await msg.delete().catch(() => null);
 
-            // Уведомление в канал уведомлений
-            const mpNotifChannel = await client.channels.fetch(MP_REJECTED_CHANNEL).catch(() => null);
-            if (mpNotifChannel) {
-                const sentMsg = await mpNotifChannel.send({ content: `📨 <@${msg.author.id}>, ваш отчёт по МПшке **${mpData.mpType}** отправлен на проверку. Ожидайте решения администрации.` }).catch(() => null);
-                if (sentMsg) setTimeout(() => sentMsg.delete().catch(() => null), 10000);
-            }
             return;
         }
 
