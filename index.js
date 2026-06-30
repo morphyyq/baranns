@@ -499,6 +499,12 @@ client.once(Events.ClientReady, async () => {
         new SlashCommandBuilder()
             .setName("interaction_panel")
             .setDescription("Отправить панель взаимодействия с функционалом бота")
+            .setDefaultMemberPermissions(0),
+
+        // ПАНЕЛЬ МАГАЗИНА
+        new SlashCommandBuilder()
+            .setName("shop_panel")
+            .setDescription("Отправить панель семейного магазина баллов")
             .setDefaultMemberPermissions(0)
     ].map(cmd => cmd.toJSON());
 
@@ -1468,6 +1474,117 @@ Main состав — основа нашей семьи. Здесь играю�
             }
 
             // =====================================================
+            // ПАНЕЛЬ МАГАЗИНА — контейнер с баннером и товарами
+            // =====================================================
+            if (i.commandName === "shop_panel") {
+                await i.deferReply({ ephemeral: true });
+
+                const SHOP_BANNER_URL = "https://media.discordapp.net/attachments/1521193585876144238/1521509859210559568/65fbe8fa-d7fe-4471-9a5c-01b3147a820a.png?ex=6a4517fa&is=6a43c67a&hm=015b43d5b6abdd38c592f0d373e7291aabeb9f2e0410ae65029927986020538e&=&format=webp&quality=lossless&width=1876&height=625";
+
+                const shopContainer = {
+                    components: [
+                        {
+                            type: 17, // Container
+                            accent_color: 0x2b2d31,
+                            components: [
+                                {
+                                    type: 12, // Media Gallery
+                                    items: [
+                                        {
+                                            media: {
+                                                url: SHOP_BANNER_URL
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    type: 10, // Text Display
+                                    content: "## Семейный магазин баллов"
+                                },
+                                {
+                                    type: 10, // Text Display
+                                    content:
+                                        "Обменивайте накопленные баллы на ценные призы и возможности.\n\n" +
+                                        "**Фарм:** 0.015 балла/мин (1 балл = 66.7 мин)\n" +
+                                        "• Баллы идут за время в голосовых каналах.\n" +
+                                        "• Не начисляются в АФК-канале или когда вы один в голосовом канале.\n" +
+                                        "• Дополнительно выдаются за RP-скрины."
+                                },
+                                {
+                                    type: 1, // Action Row
+                                    components: [
+                                        {
+                                            type: 2,
+                                            style: 2,
+                                            label: "Баланс",
+                                            custom_id: "shop_balance",
+                                            emoji: { name: "💰" }
+                                        }
+                                    ]
+                                },
+                                { type: 14 }, // Separator
+                                {
+                                    type: 10,
+                                    content: "**Снять выговор**\nСнимает 1 предупреждение.\nЦена: 50"
+                                },
+                                {
+                                    type: 1,
+                                    components: [
+                                        {
+                                            type: 2,
+                                            style: 3,
+                                            label: "Купить",
+                                            custom_id: "shop_buy_warn",
+                                            emoji: { name: "⚠️" }
+                                        }
+                                    ]
+                                },
+                                { type: 14 }, // Separator
+                                {
+                                    type: 10,
+                                    content: "**Автограф на груди Карлоса с вашим ником**\nРучная выдача через администрацию.\nЦена: 1000"
+                                },
+                                {
+                                    type: 1,
+                                    components: [
+                                        {
+                                            type: 2,
+                                            style: 3,
+                                            label: "Купить",
+                                            custom_id: "shop_buy_autograph",
+                                            emoji: { name: "🖋️" }
+                                        }
+                                    ]
+                                },
+                                { type: 14 }, // Separator
+                                {
+                                    type: 10,
+                                    content: "**main**\nповышение до роли main\nАвтоматически выдаёт роль @Main Glow.\nЦена: 500"
+                                },
+                                {
+                                    type: 1,
+                                    components: [
+                                        {
+                                            type: 2,
+                                            style: 3,
+                                            label: "Купить",
+                                            custom_id: "shop_buy_main",
+                                            emoji: { name: "📈" }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    flags: 1 << 15 // IS_COMPONENTS_V2
+                };
+
+                await i.channel.send(shopContainer);
+                await i.editReply({ content: "✅ Панель магазина успешно создана!" });
+                return;
+            }
+
+            // =====================================================
             // ПАНЕЛЬ ВЗАИМОДЕЙСТВИЯ — контейнер с баннером и кнопками
             // =====================================================
             if (i.commandName === "interaction_panel") {
@@ -2106,6 +2223,15 @@ Main состав — основа нашей семьи. Здесь играю�
                 .setColor("#1f8b4c");
 
             await i.reply({ embeds: [appEmbed], ephemeral: true });
+            return;
+        }
+
+        // =====================================================
+        // МАГАЗИН — кнопка "Баланс"
+        // =====================================================
+        if (i.isButton() && i.customId === "shop_balance") {
+            const currentBal = salary.balances[i.user.id] || 0;
+            await i.reply({ content: `💰 Баланс: $${currentBal.toLocaleString()}`, ephemeral: true });
             return;
         }
 
