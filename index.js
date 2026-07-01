@@ -365,7 +365,6 @@ async function updateOnlineMonitor() {
 // =====================================================
 // AFK SYSTEM PANEL — Container (Components V2) со стилем как в игре
 // =====================================================
-const AFK_BANNER_URL = "https://images-ext-1.discordapp.net/external/zYYtNwC3EDcHNnBkczH1dz834PL8tVXl4206KB1nMb8/https/media.tenor.com/PnfDqsWJ_OUAAAPo/dasha228play.mp4";
 
 async function updateAFKEmbed(guild) {
     try {
@@ -411,11 +410,6 @@ async function updateAFKEmbed(guild) {
 
         const container = new ContainerBuilder()
             .setAccentColor(0x1a1a2e)
-            .addMediaGalleryComponents(
-                new MediaGalleryBuilder().addItems(
-                    new MediaGalleryItemBuilder().setURL(AFK_BANNER_URL)
-                )
-            )
             .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(`## ⏱ Люди, находящиеся в АФК\n**Всего в афк ${total} человек:**`)
             )
@@ -636,7 +630,7 @@ client.once(Events.ClientReady, async () => {
                 opt.setName("user").setDescription("Рекрут").setRequired(true)
             )
             .addIntegerOption(opt =>
-                opt.setName("amount").setDescription("Сумма для списания (например 10000)").setRequired(true).setMinValue(1)
+                opt.setName("amount").setDescription("Сумма для списания (например 25000)").setRequired(true).setMinValue(1)
             )
             .setDefaultMemberPermissions(0),
         new SlashCommandBuilder()
@@ -646,7 +640,7 @@ client.once(Events.ClientReady, async () => {
                 opt.setName("user").setDescription("Рекрут").setRequired(true)
             )
             .addIntegerOption(opt =>
-                opt.setName("amount").setDescription("Сумма для начисления (например 10000)").setRequired(true).setMinValue(1)
+                opt.setName("amount").setDescription("Сумма для начисления (например 25000)").setRequired(true).setMinValue(1)
             )
             .setDefaultMemberPermissions(0),
         new SlashCommandBuilder().setName("report_panel").setDescription("Отправить широкую panel системы повышений").setDefaultMemberPermissions(0),
@@ -789,13 +783,13 @@ client.on(Events.GuildMemberRemove, async (member) => {
             const recruiterId = salary.recruits[member.id];
 
             // Если у участника перед выходом осталась только одна роль (DEDUCT_ROLE_ID),
-            // значит GuildMemberUpdate уже списал $10,000 — не списываем второй раз
+            // значит GuildMemberUpdate уже списал $25,000 — не списываем второй раз
             const rolesWithoutEveryone = member.roles.cache.filter(r => r.id !== member.guild.id);
             const alreadyDeducted = rolesWithoutEveryone.size === 1 && rolesWithoutEveryone.has(DEDUCT_ROLE_ID);
 
             if (!alreadyDeducted) {
                 if (salary.balances[recruiterId]) {
-                    salary.balances[recruiterId] -= 10000;
+                    salary.balances[recruiterId] -= 25000;
                     if (salary.balances[recruiterId] < 0) salary.balances[recruiterId] = 0;
                 }
             }
@@ -830,7 +824,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
                 const notifyChannel = await member.guild.channels.fetch("1518544382985371698").catch(() => null);
                 if (notifyChannel) {
                     await notifyChannel.send({
-                        content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — <@${member.id}> **вышел с сервера**.\nВаш баланс: **$${newBal.toLocaleString()}**`
+                        content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$25,000** — <@${member.id}> **вышел с сервера**.\nВаш баланс: **$${newBal.toLocaleString()}**`
                     }).catch(() => null);
                 }
             }
@@ -998,7 +992,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
                 await auditMsg.react("✅").catch(() => null);
 
-                salary.balances[msg.author.id] = (salary.balances[msg.author.id] || 0) + 10000;
+                salary.balances[msg.author.id] = (salary.balances[msg.author.id] || 0) + 25000;
                 
                 if (candidateId && candidateId !== "unknown") {
                     salary.recruits[candidateId] = msg.author.id;
@@ -3662,7 +3656,7 @@ ${recruitData.q4}
                 }
 
                 if (action === "accept") {
-                    salary.balances[recruiterId] = (salary.balances[recruiterId] || 0) + 10000;
+                    salary.balances[recruiterId] = (salary.balances[recruiterId] || 0) + 25000;
                     
                     if (candidateId && candidateId !== "unknown") {
                         salary.recruits[candidateId] = recruiterId;
@@ -3671,7 +3665,7 @@ ${recruitData.q4}
                     await saveDB(salary);
                     await updateSalaryEmbed(i.guild);
 
-                    await i.reply({ content: "✅ Отчёт успешно подтвержден! Рекрутеру начислено $10,000.", ephemeral: true });
+                    await i.reply({ content: "✅ Отчёт успешно подтвержден! Рекрутеру начислено $25,000.", ephemeral: true });
                     await i.message.delete().catch(() => null);
                     return;
                 }
@@ -3882,8 +3876,8 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         const recruiterId = salary.recruits[newMember.id];
         if (!recruiterId) return;
 
-        // Списываем 10к (не уходим в минус)
-        salary.balances[recruiterId] = Math.max(0, (salary.balances[recruiterId] || 0) - 10000);
+        // Списываем 25к (не уходим в минус)
+        salary.balances[recruiterId] = Math.max(0, (salary.balances[recruiterId] || 0) - 25000);
         await saveDB(salary);
 
         const config = SERVERS[newMember.guild.id];
@@ -3894,7 +3888,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         const notifyChannel2 = await newMember.guild.channels.fetch("1518544382985371698").catch(() => null);
         if (notifyChannel2) {
             await notifyChannel2.send({
-                content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$10,000** — у <@${newMember.id}> **осталась только одна роль**.
+                content: `⚠️ <@${recruiterId}>, с вашего баланса списано **$25,000** — у <@${newMember.id}> **осталась только одна роль**.
 Ваш баланс: **$${newBal2.toLocaleString()}**`
             }).catch(() => null);
         }
